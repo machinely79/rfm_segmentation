@@ -1,0 +1,2067 @@
+shinyServer(function(input, output, session) {
+  
+  source("D:/MyData/Application/scripts/summary_tables.R") 
+  source("D:/MyData/Application/scripts/rpart_functions.R") 
+  
+  
+  # formating data with library(dataPreparation)
+  format_data <- function(df) {
+    df <- un_factor(df)  # Un-factor strings that should not be factors
+    df <- find_and_transform_dates(df)  # Transform columns to dates
+    df <- find_and_transform_numerics(df)  # Transform columns to numerics
+    
+    # Iterate through columns and check for binary values
+    as.data.frame(df)  #from data.table to data.frame
+    for (col in names(df)) {
+      if (all(df[[col]] %in% c(0, 1))) {
+        df[[col]] <- as.logical(df[[col]])  # Convert 0 to FALSE and 1 to TRUE
+      }
+    }
+    return(df)
+  }
+  
+  
+  insert_clicked <- reactiveVal(FALSE)  #  reactiveVal for insert click     
+  
+  insert_clicked_pred <- reactiveVal(FALSE)  #  THIS
+  
+  
+  
+  data_preview <- reactive({
+    req(input$file)                                         
+    if (grepl("\\.csv$", input$file$name)) {
+      read.csv(input$file$datapath, nrows = 5, sep = input$delimiter)
+    } else if (grepl("\\.xls$|\\.xlsx$", input$file$name)) {
+      #read_excel(input$file$datapath, sheet = 1,range = "1:5")
+      read_excel(input$file$datapath, sheet = 1, range = "A1:Z5", col_names = TRUE)
+    } else {
+      as.data.frame()
+    }
+  })
+  
+  data_preview_pred <- reactive({               #THIS
+    req(input$file_pred)                                         
+    if (grepl("\\.csv$", input$file_pred$name)) {
+      read.csv(input$file_pred$datapath, nrows = 5, sep = input$delimiter_pred)
+    } else if (grepl("\\.xls$|\\.xlsx$", input$file_pred$name)) {
+      read_excel(input$file_pred$datapath, sheet = 1, range = "A1:Z5", col_names = TRUE)
+    } else {
+      as.data.frame()
+    }
+  })
+  
+  
+  
+  
+  output$delimiter_selection <- renderUI({
+    if (!is.null(input$file) && grepl("\\.csv$", input$file$name)) {
+      selectInput("delimiter", "Choose Delimiter", c(",", ";", "\t", "|"))    
+    }
+  })
+  
+  
+  output$delimiter_selection_pred <- renderUI({     #THIS
+    if (!is.null(input$file_pred) && grepl("\\.csv$", input$file_pred$name)) {
+      selectInput("delimiter_pred", "Choose Delimiter", c(",", ";", "\t", "|"))    
+    }
+  })
+  
+  
+  
+  output$columns_select_ui <- renderUI({
+    if (insert_clicked()) {
+      selectInput(                                     
+        "columns_select", label = NULL,
+        choices = colnames(data()),
+        selected = colnames(data()),
+        multiple = TRUE
+      )
+    }
+  })
+  
+  
+  output$columns_select_ui_pred <- renderUI({  # THIS
+    if (insert_clicked_pred()) {
+      selectInput(                                     
+        "columns_select_pred", label = NULL,
+        choices = colnames(data_pred()),
+        selected = colnames(data_pred()),
+        multiple = TRUE
+      )
+    }
+  })
+  
+  
+  observeEvent(input$import, {
+    
+    if (!is.null(input$file) && !is.null(input$file$name) && !is.null(data_preview())) {
+      insert_clicked(TRUE)
+    }else {
+      showNotification("Import the data first!", type = "warning")
+      
+    }
+    
+  })
+  
+  
+  observeEvent(input$import_pred, {  # THIS
+    
+    if (!is.null(input$file_pred) && !is.null(input$file_pred$name) && !is.null(data_preview_pred())) {
+      insert_clicked_pred(TRUE)
+    }else {
+      showNotification("Import the data for prediction first!", type = "warning")
+      
+    }
+    
+  })
+  
+  
+  
+  
+  #preview table
+  output$preview <- renderUI({
+    if (!is.null(input$file) && !insert_clicked()) {
+      data <- data_preview()
+      if (is.data.frame(data) && ncol(data) > 0) {
+        renderTable(data, colnames = TRUE, align = 'l', spacing = 'xs', hover = TRUE, bordered = TRUE, style = "white-space: pre-wrap;",digits = 1)
+      } else {
+        div("No data available.")
+      }
+    }
+  })
+  
+  
+  
+  output$preview_pred <- renderUI({       
+    if (!is.null(input$file_pred) && !insert_clicked_pred()) {
+      data_pred <- data_preview_pred()
+      if (is.data.frame(data_pred) && ncol(data_pred) > 0) {
+        renderTable(data_pred, colnames = TRUE, align = 'l', spacing = 'xs', hover = TRUE, bordered = TRUE, style = "white-space: pre-wrap;")
+      } else {
+        div("No data available.")
+      }
+    }
+  })
+  
+  
+  
+  data <- eventReactive(input$import, {
+    req(input$file)
+    if (grepl("\\.csv$", input$file$name)) {
+      data <- read.csv(input$file$datapath, sep = input$delimiter)
+    } else if (grepl("\\.xls$|\\.xlsx$", input$file$name)) {
+      data <- read_excel(input$file$datapath, sheet = 1)
+    } else {
+      data <- NULL
+    }
+    
+    if (!is.null(data)) {
+      insert_clicked(TRUE)
+      data <- format_data(data)  # Apply formatting functions
+    }
+    
+    data
+    
+  })
+  
+  
+  
+  
+  
+  data_pred <- eventReactive(input$import_pred, {  #THIS
+    req(input$file_pred)
+    if (grepl("\\.csv$", input$file_pred$name)) {
+      data_pred <- read.csv(input$file_pred$datapath, sep = input$delimiter_pred)
+    } else if (grepl("\\.xls$|\\.xlsx$", input$file_pred$name)) {
+      data_pred <- read_excel(input$file_pred$datapath, sheet = 1)
+    } else {
+      data_pred <- NULL
+    }
+    
+    if (!is.null(data_pred)) {
+      insert_clicked_pred(TRUE)
+      data_pred <- format_data(data_pred)  # Apply formatting functions
+      
+    }
+    
+    data_pred
+    
+  })
+  
+  
+  
+  min_rows <- reactive({
+    validate(
+      need(!is.null(input$minNumberRow), "Minimum number of rows must be at least 1. !"),
+      need(as.numeric(input$minNumberRow) >= 1, "Minimum number of rows must be at least 1.")
+    )
+    
+    return(as.numeric(input$minNumberRow))
+  })
+  
+  
+  min_rows_pred <- reactive({      #THIS
+    validate(
+      need(!is.null(input$minNumberRow_pred), "Minimum number of rows must be at least 1. !"),
+      need(as.numeric(input$minNumberRow_pred) >= 1, "Minimum number of rows must be at least 1.")
+    )
+    
+    return(as.numeric(input$minNumberRow_pred))
+  })
+  
+  
+  
+  
+  selected_columns <- reactive({
+    input$columns_select
+  })
+  
+  
+  
+  selected_columns_pred <- reactive({  #THIS
+    input$columns_select_pred
+  })
+  
+  
+  output$table_1 <- renderUI({
+    # Dohvati odabrane kolone iz selectInput-a
+    selected_cols <- selected_columns()
+    
+    
+    if (insert_clicked()) {
+      if (!is.null(data()) && ncol(data()) > 0) {
+        if (!is.null(selected_cols) && length(selected_cols) > 0) {
+          # Check if selected columns exist in the data frame
+          valid_selected_columns <- intersect(selected_cols, colnames(data()))
+          
+          if (length(valid_selected_columns) > 0) {
+            # Filtriraj podatke i prikaži tablicu samo s odabranim kolonama
+            reactable(
+              #data()[, valid_selected_columns, drop = FALSE],
+              data()[, ..valid_selected_columns, with = FALSE], # for data.table
+              defaultPageSize = as.numeric(min_rows()),
+              filterable = TRUE,
+              striped = TRUE,
+              searchable = TRUE,
+              showSortable = TRUE,
+              resizable = TRUE,
+              wrap = FALSE,
+              bordered = TRUE,
+              minRows = 10,
+              highlight = TRUE,
+              style = list(
+                #backgroundColor = "#a3bcc0",
+                #color = "#000000"     # Change the color of the content to blue
+              )
+            )
+          } else {
+            div("No valid columns selected.")
+          }
+        } else {
+          # Ako nisu odabrane nikakve kolone, prikaži cijeli DataFrame
+          reactable(
+            data(),
+            defaultPageSize = as.numeric(min_rows()),
+            filterable = TRUE,
+            searchable = TRUE,
+            showSortable = TRUE,
+            resizable = TRUE,
+            wrap = FALSE,
+            bordered = TRUE,
+            minRows = 10,
+            highlight = TRUE,
+            style = list(
+              #backgroundColor = "#a3bcc0",
+              #color = "#000000"     # Change the color of the content to blue
+            )
+          )
+        }
+      } else {
+        
+        div(
+          style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; font-size: 25px; color: #a4b3b6;",
+          tags$img(src = "scientist.svg", style = "width: 700px; height: auto; opacity: 0.3;"),
+          HTML("<br>"),
+          p("Insert your data and start discovering patterns in a beautifully simple way!")   
+        )
+      }
+    } else {
+      div(
+        style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; font-size: 25px; color: #a4b3b6;",
+        tags$img(src = "scientist.svg", style = "width: 700px; height: auto; opacity: 0.3;"),
+        HTML("<br>"),
+        p("Insert your data and start discovering patterns in a beautifully simple way!")
+      )
+    }
+  })
+  
+  
+  
+  
+  output$table_1_pred <- renderUI({       
+    # Dohvati odabrane kolone iz selectInput-a
+    selected_cols_pred <- selected_columns_pred()
+    
+    
+    if (insert_clicked_pred()) {
+      if (!is.null(data_pred()) && ncol(data_pred()) > 0) {
+        if (!is.null(selected_cols_pred) && length(selected_cols_pred) > 0) {
+          # Check if selected columns exist in the data frame
+          valid_selected_columns <- intersect(selected_cols_pred, colnames(data_pred()))
+          
+          if (length(valid_selected_columns) > 0) {
+            # Filtriraj podatke i prikaži tablicu samo s odabranim kolonama
+            reactable(
+              #data()[, valid_selected_columns, drop = FALSE],
+              data_pred()[, ..valid_selected_columns, with = FALSE], # for data.table
+              defaultPageSize = as.numeric(min_rows_pred()),
+              filterable = TRUE,
+              striped = TRUE,
+              searchable = TRUE,
+              showSortable = TRUE,
+              resizable = TRUE,
+              wrap = FALSE,
+              bordered = TRUE,
+              minRows = 10,
+              highlight = TRUE,
+              style = list(
+                #backgroundColor = "#051524",
+                #stripedColor = "#051524",
+                #highlightColor = "#051524"
+                #color = "#000000"     # Change the color of the content to blue
+              )
+            )
+          } else {
+            div("No valid columns selected.")
+          }
+        } else {
+          # Ako nisu odabrane nikakve kolone, prikaži cijeli DataFrame
+          reactable(
+            data_pred(),
+            defaultPageSize = as.numeric(min_rows_pred()),
+            filterable = TRUE,
+            searchable = TRUE,
+            showSortable = TRUE,
+            resizable = TRUE,
+            wrap = FALSE,
+            bordered = TRUE,
+            minRows = 10,
+            highlight = TRUE,
+            style = list(
+              #backgroundColor = "#051524",
+              #stripedColor = "#051524",
+              #highlightColor = "#051524"
+              #color = "#000000"     # Change the color of the content to blue
+            )
+          )
+        }
+      } else {
+        
+        div(
+          style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; font-size: 25px; color: #a4b3b6;",
+          tags$img(src = "machine-learning.svg", style = "width: 500px; height: auto; opacity: 0.2;"),
+          HTML("<br>"),
+          p("Insert your new data and predict the target feature before it happens!")
+        )
+      }
+    } else {
+      div(
+        style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; font-size: 25px; color: #a4b3b6;",
+        tags$img(src = "machine-learning.svg", style = "width: 500px; height: auto; opacity: 0.2;"),
+        HTML("<br>"),
+        p("Insert your new data and predict the target feature before it happens!")
+      )
+    }
+  })
+  
+  
+  
+  output$table_2 <- renderUI({
+    source("D:/MyData/Application/scripts/summary_tables.R") 
+    
+    selected_cols <- selected_columns() 
+    
+    
+    if (!is.null(data()) && ncol(data()) > 0) {
+      # Ako nisu odabrane nikakve kolone, prikaži cijeli DataFrame
+      generate_summary_table(data(), selected_cols)  # generate_summary_table is in source() summary_tables file
+      
+    } else {
+      # Ako nema podataka ili nema kolona, prikaži praznu tablicu
+      div("No data available.")
+    }
+    
+  })
+  
+  
+  output$table_2_pred <- renderUI({  # THIS
+    
+    selected_cols_pred <- selected_columns_pred()
+    
+    
+    if (!is.null(data_pred()) && ncol(data_pred()) > 0) {
+      # Ako nisu odabrane nikakve kolone, prikaži cijeli DataFrame
+      generate_summary_table(data_pred(), selected_cols_pred)  # generate_summary_table is in source() summary_tables file
+      
+    } else {
+      # Ako nema podataka ili nema kolona, prikaži praznu tablicu
+      div("No data available.")
+    }
+    
+  })
+  
+  
+  
+  
+  
+  output$conditional_elements_help_text <- renderUI({
+    if (!is.null(data()) && ncol(data()) > 0) {
+      helpText("Note: - Mean Value, Min Value and Max Value are calculated only for numerical data")
+    } else {
+      
+      ""
+    }
+  })
+  
+  
+  output$conditional_elements_help_text_pred <- renderUI({   
+    if (!is.null(data_pred()) && ncol(data_pred()) > 0) {
+      helpText("Note: - Mean Value, Min Value and Max Value are calculated only for numerical data")
+    } else {
+      
+      ""
+    }
+  })
+  
+  
+  
+  observe({
+    shinyjs::toggle(id = "summary_div", condition = !is.null(data()) && ncol(data()) > 0)
+  })
+  
+  
+  observe({                                      
+    shinyjs::toggle(id = "summary_div_pred", condition = !is.null(data_pred()) && ncol(data_pred()) > 0)
+  })
+  
+  
+  
+  
+  output$summary_text_output <- renderText({
+    if (!is.null(data()) && ncol(data()) > 0) {
+      
+      selected_cols <- selected_columns() 
+      
+      new_columns <- data()[, ..selected_cols, drop = FALSE]
+      
+      column_counts <- count_column_types(new_columns)
+      generate_summary_text(column_counts)
+    } else {
+      ""
+    }
+  })
+  
+  
+  output$summary_text_output_pred <- renderText({    
+    if (!is.null(data_pred()) && ncol(data_pred()) > 0) {
+      
+      selected_cols_pred <- selected_columns_pred()
+      
+      new_columns <- data_pred()[, ..selected_cols_pred, drop = FALSE]
+      
+      column_counts <- count_column_types(new_columns)
+      generate_summary_text(column_counts)
+    } else {
+      ""
+    }
+  })
+  
+  
+  
+  output$table_3 <- renderUI({
+    source("D:/MyData/Application/scripts/summary_tables.R") 
+    
+    selected_cols <- selected_columns() 
+    
+    if (!is.null(data()) && ncol(data()) > 0) {
+      
+      filtered_data <- filter_categorical_columns(data(), selected_cols)
+      
+      if (!is.null(filtered_data) && ncol(filtered_data) > 0) {
+        create_reactable(filtered_data)
+      } else {
+        div(
+          id = "custom-alert",
+          "No categorical data available. Select categorical data type columns"
+        )
+        
+        
+      }
+      
+    } else {
+      div("No data available.")
+    }
+  })
+  
+  
+  
+  output$table_3_pred <- renderUI({   
+    
+    selected_cols_pred <- selected_columns_pred()
+    
+    if (!is.null(data_pred()) && ncol(data_pred()) > 0) {
+      
+      filtered_data <- filter_categorical_columns(data_pred(), selected_cols_pred)
+      
+      if (!is.null(filtered_data) && ncol(filtered_data) > 0) {
+        create_reactable(filtered_data)
+      } else {
+        div(
+          id = "custom-alert",
+          "No categorical data available. Select categorical data type columns"
+        )
+        
+        
+      }
+      
+    } else {
+      div("No data available.")
+    }
+  })
+  
+  
+  
+  #select target variable on UI
+  observe({
+    
+    if (!is.null(data())) {
+      
+      selected_cols <- selected_columns()
+      
+      temp_data<-data()
+      
+      new_columns <- temp_data[, ..selected_cols, drop = FALSE]
+      
+      choices <- names(new_columns)
+      updateSelectInput(session, "dependent_var", choices = choices)
+    }
+  })
+  
+  
+  
+  cp_threshold <- reactive({
+    input$cp_threshold
+    
+  })
+  max_depth <-reactive({
+    input$max_depth
+    
+  })
+  
+  minsplit_value <-reactive({
+    input$minsplit
+  })
+  
+  
+  
+  
+  
+  split_data <- reactive({
+    #if (is.null(data())) return(NULL)
+    
+    dependent_col <- input$dependent_var
+    selected_cols <- selected_columns()
+    
+    data_processed <- prepare_data_for_rpart(data())
+    
+    excluded_feature<-data_processed$excluded_info
+    
+    data_processed <- data_processed$data[, c(selected_cols), drop = FALSE]
+    
+    
+    # Split data into training and test sets using caret
+    set.seed(123)  # For reproducibility
+    train_index <- createDataPartition(data_processed[[dependent_col]], p = 0.7, list = FALSE)
+    train_data <- data_processed[train_index, ]
+    test_data <- data_processed[-train_index, ]
+    
+    #dependent_col_dt_obj <- data_processed[[dependent_col]]
+    dependent_col_dt_obj <- train_data[[input$dependent_var]]
+    
+    prediction_type <- get_prediction_type(dependent_col_dt_obj)
+    
+    
+    return(list(train_data = train_data, test_data = test_data, 
+                prediction_type=prediction_type, dependent_col_dt_obj = dependent_col_dt_obj, 
+                excluded_feature = excluded_feature))
+  })
+  
+  
+  
+  tree_data <- reactive({
+    if (is.null(data())) return(NULL)
+    if (is.null(input$dependent_var)) return(NULL)
+    
+    dependent_col <- input$dependent_var
+    formula <- as.formula(paste(dependent_col, "~ ."))
+    
+    
+    # Use the split_data function to get train and test data
+    data_split <- split_data()
+    train_data <- data_split$train_data
+    test_data <- data_split$test_data
+    prediction_type <- data_split$prediction_type
+    dependent_col_dt_obj<-data_split$dependent_col_dt_obj
+    
+    cp_threshold_value <- cp_threshold()
+    max_depth_value <- max_depth()
+    minsplit_value <- minsplit_value()
+    
+    
+    method <- NULL
+    parms <- NULL
+    
+    status_dep_var<-analyze_dependent_column(dependent_col_dt_obj)
+    
+    method<-status_dep_var$method
+    parms<-status_dep_var$parms
+    
+    
+    
+    tree_model <- create_decision_tree(train_data, formula, method, parms, cp_threshold_value,
+                                       max_depth_value, minsplit_value)
+    
+    
+    
+    
+    optimal_cp <- tree_model$cptable[which.min(tree_model$cptable[,"xerror"]),"CP"]
+    
+    optimal_cp <- round(as.numeric(optimal_cp), 4)
+    
+    # Generate predictions using the tree model
+    predictions <- generate_predictions(tree_model, train_data, test_data, prediction_type, dependent_col)
+    
+    
+    # Select and prepare data for prescriptiv segment in machinely app
+    get_variable_importance<-tree_model$variable.importance
+    data_importance_var <- data.frame(Importance = get_variable_importance)
+    data_importance_var$Feature <- rownames(data_importance_var)
+    rownames(data_importance_var) <- NULL
+    
+    # Sortiranje po opadajućem redoslijedu Importance vrijednosti
+    sorted_importance <- data_importance_var[order(-data_importance_var$Importance), ]
+    
+    # top 10 Importance vrijednosti
+    top_10_importance <- head(sorted_importance, n = 10)
+    
+    # Izdvajanje kolona koje se podudaraju sa nazivima u Importance Feature
+    filter_columns <- intersect(names(train_data), top_10_importance$Feature)
+    
+    selected_prescript_data <- train_data[, filter_columns]
+
+    # Return a list containing both the tree model and predictions
+    return(list(tree_model = tree_model, optimal_cp=optimal_cp, predictions = predictions, 
+                selected_prescript_data = selected_prescript_data))
+    
+  })
+  
+  
+  
+  output$tree_plot <- renderVisNetwork({
+    
+    train_data <- split_data()$train_data
+    model_type <- tree_data()$predictions$model_type
+    #dependent_col_dt_obj<-data_split$dependent_col_dt_obj
+    dependent_col <- input$dependent_var
+    
+    colorRange <- c("#eaccb7", "#8f552b") 
+    colorYData <- generateColorYData(train_data, dependent_col, colorRange)
+    
+    
+    tryCatch({
+      decision_tree <- tree_data()
+      
+      if (!is.null(decision_tree)) {
+        model_tree <- decision_tree$tree_model  
+        tree_visualization(model_tree, model_type, colorYData)
+      }
+    }, error = function(e) {
+      
+      showNotification("To generate the model, adjust the sliders to other value!", type = "warning")
+      
+      # print("An error occurred:")
+      # print(e)
+    })
+  })
+  
+  
+  
+  # output$excluded_feature_info<- renderText({
+  #   split_data()$excluded_feature
+  # 
+  #   count <-split_data()$excluded_feature$count
+  #   features_name <-split_data()$excluded_feature$variables
+  # 
+  #   generated_text <- generate_text_excluded_feature(count, features_name)
+  #   cat("OVDJE TREBA PRINT\n")
+  #   cat("Count:", count, "\n")
+  #   cat("Features Name:", features_name, "\n")
+  #   
+  #   return(generated_text)
+  #   
+  # })
+  
+  output$excluded_feature_info <- renderText({
+    split_data()$excluded_feature
+    
+    count <-split_data()$excluded_feature$count
+    features_name <-split_data()$excluded_feature$variables
+    
+    cat("OVDJE TREBA PRINT\n")
+    cat("Count:", count, "\n")
+    cat("Features Name:", features_name, "\n")
+    
+    if (!is.null(count)) {
+      generated_text <- generate_text_excluded_feature(count, features_name)
+      
+    } else {
+      ""
+    }
+    return(generated_text)
+    
+  })
+  
+  
+  
+
+  
+  
+  #Accuracy resault on Training Data classification
+  output$train_accuracy_output_class <- renderText({
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    #paste("Accuracy on Training Data:", round(accuracy_results$train_accuracy, 1), "%")
+    paste("Accuracy:", round(as.numeric(accuracy_results[["train_accuracy"]][["Accuracy"]]), 1), "%")
+    
+  })
+  
+  
+  # gauge for train data classification
+  output$gauge_train_class = renderGauge({
+    
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    
+    
+    #gauge_value <- accuracy_results$train_accuracy
+    gauge_value <- accuracy_results[["train_accuracy"]][["Accuracy"]]
+    
+    gauge(value = gauge_value,
+          min = 0,
+          max = 100,
+          sectors = gaugeSectors(success = c(51, 100), warning = c(0, 51),
+                                 colors = c("#4dffa6", "#99ffcc")),  
+          label = "Accuracy %",
+    )
+  })
+  
+  
+  #Accuracy resault on Test Data classification
+  output$test_accuracy_output_class <- renderText({
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    #paste("Accuracy on Test Data:", round(accuracy_results$test_accuracy, 1), "%")
+    paste("Accuracy:", round(as.numeric(accuracy_results[["test_accuracy"]][["Accuracy"]]), 1), "%")
+    
+  })
+  
+  
+  # gauge for test data classification
+  output$gauge_test_class = renderGauge({
+    
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    
+    #gauge_value <- accuracy_results$test_accuracy
+    gauge_value <- accuracy_results[["test_accuracy"]][["Accuracy"]]
+    gauge(value = gauge_value,
+          min = 0,
+          max = 100,
+          sectors = gaugeSectors(success = c(51, 100), warning = c(0, 51),
+                                 colors = c("#4dffa6", "#99ffcc")),
+          label = "Accuracy %",
+    )
+  })
+  
+  
+  #Kappa resault on Train Data classification
+  output$train_kappa_output_class <- renderText({
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    paste("Kappa:", round(as.numeric(accuracy_results$train_kappa) , 1), "%")
+    #paste("Accuracy on Training Data:", round(accuracy_results[["train_accuracy"]][["Accuracy"]], 1), "%")
+    
+  })
+  
+  #Kappa resault on Test Data classification
+  output$test_kappa_output_class <- renderText({
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    paste("Kappa:", round(as.numeric(accuracy_results$test_kappa), 1), "%")
+    #paste("Accuracy on Training Data:", round(accuracy_results[["test_accuracy"]][["Accuracy"]], 1), "%")
+    
+  })
+  
+  
+  
+  #Accuracy resault on Training Data Regression
+  output$train_accuracy_output_regress <- renderText({
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    paste("Accuracy: ", round(as.numeric(accuracy_results$train_accuracy), 1), "R²")
+  })
+  
+  
+  # gauge for train data Regression
+  output$gauge_train_regress = renderGauge({
+    
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    
+    gauge_value <- accuracy_results$train_accuracy
+    
+    gauge(value = gauge_value,
+          min = 0,
+          max = 1,
+          sectors = gaugeSectors(success = c(0.51, 1), warning = c(0.3, 0.51), danger = c(0.0, 0.3),
+                                 colors = c( "#4dffa6", "#99ffcc", "#ccffe6")),
+          label = "Accuracy R²",
+    )
+  })
+  
+  
+  
+  #Accuracy resault on test Data Regression
+  output$test_accuracy_output_regress <- renderText({
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    paste("Accuracy: ", round(as.numeric(accuracy_results$test_accuracy), 1), "R²")
+  })
+  
+  
+  # gauge for test data Regression
+  output$gauge_test_regress = renderGauge({
+    
+    tree_results <- tree_data()
+    accuracy_results <- tree_results$predictions
+    
+    gauge_value <- accuracy_results$test_accuracy
+    
+    gauge(value = gauge_value,
+          min = 0,
+          max = 1,
+          sectors = gaugeSectors(success = c(0.51, 1), warning = c(0.3, 0.51), danger = c(0.0, 0.3),
+                                 colors = c( "#4dffa6", "#99ffcc", "#ccffe6")),
+          label = "Accuracy R²",
+    )
+  })
+  
+  
+  
+  # N cases Training Data Regression i classificatiom
+  output$train_N_output_regress_class <- renderText({
+    tree_results <- tree_data()
+    N_record <- tree_results$predictions
+    paste("Training Data: n= ", round(as.numeric(N_record$N_train), 0), "Records")
+  })
+  
+  # N cases Test Data Regression i classificatiom
+  output$test_N_output_regress_class <- renderText({
+    tree_results <- tree_data()
+    N_record <- tree_results$predictions
+    paste("Test Data: n= ", round(as.numeric(N_record$N_test), 0), "Records")
+  })
+  
+  # mae Training Data Regression
+  output$train_mae_output_regress <- renderText({
+    tree_results <- tree_data()
+    mae_resault <- tree_results$predictions
+    paste("Mean Absolute Error: ", round(as.numeric(mae_resault$train_mae), 1))
+  })
+  
+  # mae Test Data Regression
+  output$test_mae_output_regress <- renderText({
+    tree_results <- tree_data()
+    mae_resault <- tree_results$predictions
+    paste("Mean Absolute Error: ", round(as.numeric(mae_resault$test_mae), 1))
+  })
+  
+  
+  # mse Training Data Regression
+  output$train_mse_output_regress <- renderText({
+    tree_results <- tree_data()
+    mse_resault <- tree_results$predictions
+    paste("Mean Squared Error: ", round(as.numeric(mse_resault$train_mse), 1))
+  })
+  
+  # mse Test Data Regression
+  output$test_mse_output_regress <- renderText({
+    tree_results <- tree_data()
+    mse_resault <- tree_results$predictions
+    paste("Mean Squared Error: ", round(as.numeric(mse_resault$test_mse), 1))
+  })
+  
+  
+  
+  # display feature importance on plotly with absolute panel
+  output$feature_importance <- renderPlotly({
+    tree_results <- tree_data()
+    tree_model <- tree_results$tree_model
+    
+    data_importance_var <- data.frame(Importance = tree_model$variable.importance)
+    
+    data_importance_var$Feature <- rownames(data_importance_var)
+    rownames(data_importance_var) <- NULL
+    
+    data_importance_var$Importance<-round(as.numeric(data_importance_var$Importance),1)
+    
+    
+    plot_ly(
+      data = data_importance_var,
+      x = ~Importance,
+      y = ~Feature,
+      type = "bar",
+      marker = list(color = c("#7bc0ce")),
+      width = 300,  # Širina grafikona
+      height = 400  # Visina grafikona
+    ) %>% 
+      layout(
+        yaxis = list(
+          categoryorder = "total ascending",
+          title = "",
+          titlefont = list(size = 14, color = "#a4b3b6"),
+          tickfont = list(size = 12, color = "#a4b3b6"),
+          side = "left" # Poravnanje teksta na levoj strani
+        ),
+        xaxis = list(
+          title = "Importance",
+          titlefont = list(size = 14, color = "#a4b3b6"),
+          tickfont = list(size = 12, color = "#a4b3b6")
+        ),
+        paper_bgcolor = "#16525e",  # Transparentna boja pozadine papira
+        plot_bgcolor = "#16525e",   # Transparentna boja pozadine grafikona
+        showlegend = FALSE,
+        margin = list(l = 10, r = 10, t = 50, b = 10),  # Podesite margine ovde
+        bargap = 0.4  # Podesite vrijednost bargap ovdje
+      )
+    
+  })
+  
+
+  
+  
+  output$complexity_parameter <- renderUI({
+    
+    tree_results <- tree_data()
+    tree_model <- tree_results$tree_model
+    cptable_df <- as.data.frame(tree_model$cptable)
+    num_rows <- nrow(cptable_df)
+    
+    table <- cptable_df %>%
+      kbl(format = "html", escape = FALSE, col.names = c("CP", "nsplit", "rel error", "xerror", "xstd" )) %>%
+      kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+      row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+      row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+      
+      column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+    
+    #return(table)
+    HTML(as.character(table))
+    
+  })
+  
+  
+
+  
+  output$confusion_matrix_plot <- renderPlotly({
+    
+    tree_results <- tree_data()
+    conf_matrix <- tree_results$predictions$confusion_matrix
+    
+    plot <- plot_ly(
+      x = colnames(conf_matrix),
+      y = rownames(conf_matrix),
+      z = conf_matrix,
+      type = "heatmap",
+      colorscale = list(c(0, "#b7dce4"), c(1, "#7bc0ce")), 
+      showscale = TRUE
+    ) %>% layout(
+      
+      title = "",
+      xaxis = list(
+        title = "Predicted", 
+        titlefont = list(size = 12, color = "#a4b3b6"),
+        tickfont = list(size = 12, color = "#a4b3b6")),
+      yaxis = list(
+        title = "Actual",
+        titlefont = list(size = 12, color = "#a4b3b6"),  
+        tickfont = list(size = 12, color = "#a4b3b6"),
+        side = "left" # Poravnanje teksta na levoj strani
+      ),
+      
+      
+      paper_bgcolor = "#16525e",  # Transparentna boja pozadine papira
+      plot_bgcolor = "#16525e",   # Transparentna boja pozadine grafikona
+      showlegend = FALSE,
+      margin = list(l = 10, r = 10, t = 50, b = 10) # Podesite margine ovde
+    )
+    
+    # Dodaj ručno anotacije s vrijednostima
+    for (i in 1:nrow(conf_matrix)) {
+      for (j in 1:ncol(conf_matrix)) {
+        plot <- plot %>% add_annotations(
+          text = conf_matrix[i, j],
+          x = colnames(conf_matrix)[j],
+          y = rownames(conf_matrix)[i],
+          showarrow = FALSE
+        )
+      }
+    }
+    
+    # Prikazi plotly grafiku
+    plot
+  })
+  
+  
+  
+  # display in absolute panel optimal cp value
+  output$optimal_cp_values <- renderText({
+    tree_results <- tree_data()
+    
+    paste("Remark: If you want an optimal model, you can set slider CP Threshold value approx. to:", round(as.numeric(tree_results$optimal_cp), 6))
+    
+  })
+  
+  
+ 
+  
+  
+  observeEvent(input$toggle_button_metrices, {
+    if (input$toggle_button_metrices) {
+      
+      output$dynamic_content <- renderUI({
+        tree_results <- tree_data()
+        accuracy_results <- tree_results$predictions
+        
+        if (accuracy_results$model_type == "Classification") {
+          tagList(
+            absolutePanel(id = "controls", class = "panel panel-default", fixed = FALSE,
+                          draggable = TRUE, top = "auto", left = 20, right = "auto", bottom = 20,
+                          width = 600, height = 500,
+                          fluidRow(h4("Model Evaluation"),
+                                   h5("Classification"),
+                                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                   column(
+                                     width = 6,  # Prva kolona, širina 6
+                                     h4("Training"),
+                                     div(class = "accuracy-div",
+                                         p(class = "accuracy-value", textOutput("train_N_output_regress_class"))),
+                                     div(class = "accuracy-div",
+                                         p(class = "accuracy-value", textOutput("train_kappa_output_class"))),
+                                     br(),
+                                     div(class = "accuracy-div",
+                                         p(class = "accuracy-value", textOutput("train_accuracy_output_class"))),
+                                     gaugeOutput("gauge_train_class"),
+                                   ),
+                                   column( 
+                                     width = 6,  # Druga kolona, širina 6
+                                     h4("Test"),
+                                     div(class = "accuracy-div",
+                                         p(class = "accuracy-value", textOutput("test_N_output_regress_class"))),
+                                     div(class = "accuracy-div",
+                                         p(class = "accuracy-value", textOutput("test_kappa_output_class"))),
+                                     br(),
+                                     div(class = "accuracy-div",
+                                         p(class = "accuracy-value", textOutput("test_accuracy_output_class"))),
+                                     gaugeOutput("gauge_test_class")
+                                   )
+                          )
+            )
+          )
+          
+        } else if (accuracy_results$model_type == "Regression") {
+          
+          tagList(
+            absolutePanel(id = "controls", class = "panel panel-default", fixed = FALSE,
+                          draggable = TRUE, top = "auto", left = 20, right = "auto", bottom = 20,
+                          width = 600, height = 500,
+                          fluidRow(h4("Model Evaluation"),
+                                   h5("Regression"),
+                                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                   column( width = 6, 
+                                           h4("Training"),
+                                           div(class = "accuracy-div",
+                                               p(class = "accuracy-value", textOutput("train_N_output_regress_class"))),
+                                           
+                                           div(class = "accuracy-div",
+                                               p(class = "accuracy-value", textOutput("train_mae_output_regress"))),
+                                           div(class = "accuracy-div",
+                                               p(class = "accuracy-value", textOutput("train_mse_output_regress"))),
+                                           
+                                           div(class = "accuracy-div",
+                                               p(class = "accuracy-value", textOutput("train_accuracy_output_regress"))),
+                                           gaugeOutput("gauge_train_regress"),
+                                           
+                                   ),
+                                   column(width = 6, 
+                                          h4("Test"),
+                                          div(class = "accuracy-div",
+                                              p(class = "accuracy-value", textOutput("test_N_output_regress_class"))),
+                                          
+                                          div(class = "accuracy-div",
+                                              p(class = "accuracy-value", textOutput("test_mae_output_regress"))),
+                                          div(class = "accuracy-div",
+                                              p(class = "accuracy-value", textOutput("test_mse_output_regress"))),
+                                          
+                                          div(class = "accuracy-div",
+                                              p(class = "accuracy-value", textOutput("test_accuracy_output_regress"))),
+                                          gaugeOutput("gauge_test_regress"),
+                                          
+                                   )
+                          )
+            )
+          )
+          
+          
+        }
+        
+      })
+    } else {
+      output$dynamic_content <- NULL
+    }
+  })
+  
+  
+  
+  
+  observeEvent(input$toggle_button_validation, {
+    if (input$toggle_button_validation) {
+      output$dynamic_content_2 <- renderUI({
+        tree_results <- tree_data()
+        accuracy_results <- tree_results$predictions
+        
+        if (accuracy_results$model_type == "Classification") {
+          tagList(
+            absolutePanel(id = "controls2", class = "panel panel-default panel-scroll-vertical", fixed = FALSE,
+                          draggable = TRUE, top = 60, left = "auto", right = 20, bottom = "auto",
+                          width = 800, height = 600,
+                          fluidRow(h4("Cross Validation"),
+                                   h5("Classification"),
+                                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                   column(width = 6,  # Prva kolona, širina 6
+                                          h5("Complexity Parameter (cp)"),
+                                          br(),
+                                          textOutput("optimal_cp_values"),
+                                          br(),
+                                          tableOutput("complexity_parameter"),
+                                          #div(class = "complexity_parameter-table", tableOutput('complexity_parameter')),
+                                          
+                                          helpText("CP: Complexity Parameter, n split: Number of Splits, 
+                                          rel error: Relative Error, xerror: Cross-Validation Error, 
+                                          xstd:Cross-Validation Standard Deviation")
+                                          
+                                   ),
+                                   column(width = 6,  # Druga kolona, širina 6
+                                          h5("Feature Importance"),
+                                          plotlyOutput("feature_importance")
+                                          
+                                   )
+                          ),
+                          
+                          fluidRow(
+                            tags$hr(style = "border-color: #009999; margin-top: 8px;"),
+                            h5("Confusion Matrix"),
+                            br(),
+                            plotlyOutput("confusion_matrix_plot")
+                            
+                            
+                            
+                          )
+                          
+            )
+          )
+          
+        } else if (accuracy_results$model_type == "Regression") {
+          
+          tagList(
+            absolutePanel(id = "controls2",  class = "panel panel-default panel-scroll-vertical" ,fixed = FALSE,
+                          draggable = TRUE, top = 60, left = "auto", right = 20, bottom = "auto",
+                          width = 800, height = 600,
+                          fluidRow(h4("Cross Validation"),
+                                   h5("Regression"),
+                                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                   column( width = 6, 
+                                           h5("Complexity Parameter (cp)"),
+                                           br(),
+                                           textOutput("optimal_cp_values"),
+                                           br(),
+                                           tableOutput("complexity_parameter"),
+                                           #div(class = "complexity_parameter-table", tableOutput('complexity_parameter')),
+                                           helpText("CP: Complexity Parameter, n split: Number of Splits, 
+                                                     rel error: Relative Error, xerror: Cross-Validation Error, 
+                                                     xstd:Cross-Validation Standard Deviation")
+                                           
+                                   ),
+                                   column(width = 6, 
+                                          h5("Feature Importance"),
+                                          plotlyOutput("feature_importance")
+                                          
+                                          
+                                          
+                                   )
+                          )
+            )
+          )
+          
+          
+        }
+        
+        
+      })
+    } else {
+      output$dynamic_content_2 <- NULL
+    }
+  })
+  
+  
+  
+  
+  
+  
+  # #cache data for prescriptive
+  observeEvent(input$input_generators, {
+    
+    updated_data <- tree_data()$selected_prescript_data
+    
+    for (col in colnames(updated_data)) {
+      
+      input_id <- paste0("input_", col)
+      input_value <- input[[input_id]]
+      updated_data[, col] <- input_value
+      
+      
+    }
+  })
+  
+  
+  
+  
+  output$input_generators <- renderUI({
+    input_list <- lapply(colnames(tree_data()$selected_prescript_data), function(col) {
+      col_type <- class(tree_data()$selected_prescript_data[[col]])
+      if (col_type %in% c("numeric", "integer")) {
+        col_range <- range(tree_data()$selected_prescript_data[[col]], na.rm = TRUE)
+        differences <- diff(tree_data()$selected_prescript_data[[col]])
+        min_difference <- min(abs(differences))
+        step <- min_difference
+        
+        knobInput(
+          inputId = paste0("input_", col),
+          label = col,
+          min = col_range[1],
+          max = col_range[2],
+          value = round(mean(col_range), 0),
+          step = step,
+          width = "100px",
+          fgColor = "#0a5f70",  #"#7bc0ce",
+          inputColor = "white",
+          bgColor = "#a4b3b6",
+          fontSize = "13px",
+          lineCap = "round"
+        )
+      } else if (col_type == "factor") {
+        unique_levels <- levels(tree_data()$selected_prescript_data[[col]])
+        selectInput(
+          inputId = paste0("input_", col),
+          #label = paste("Vrijednost za", col),
+          label = col,
+          choices = unique_levels
+          #selectize = FALSE,
+        )
+        
+      }
+    })
+    
+    max_outputs_first_column <- 5
+    input_list_first_column <- input_list[1:max_outputs_first_column]
+    input_list_second_column <- input_list[(max_outputs_first_column + 1):length(input_list)]
+    
+    column1 <- column(width = 6, align = "center", style = "border: 1px solid #16525e; border-radius: 5px;", do.call(tagList, input_list_first_column))
+    column2 <- column(width = 6, align = "center", style = "border: 1px solid #16525e; border-radius: 5px;", do.call(tagList, input_list_second_column))
+    
+    fluidRow(column1, column2)
+  })
+  
+  
+  # output$input_generators <- renderUI({
+  #   knob_inputs <- list()
+  #   select_inputs <- list()
+  # 
+  #   for (col in colnames(tree_data()$selected_prescript_data)) {
+  #     col_type <- class(tree_data()$selected_prescript_data[[col]])
+  #     if (col_type %in% c("numeric", "integer")) {
+  #       col_range <- range(tree_data()$selected_prescript_data[[col]], na.rm = TRUE)
+  #       differences <- diff(tree_data()$selected_prescript_data[[col]])
+  #       min_difference <- min(abs(differences))
+  #       step <- min_difference
+  # 
+  #       knob_input <- knobInput(
+  #         inputId = paste0("input_", col),
+  #         label = paste("Vrijednost za", col),
+  #         min = col_range[1],
+  #         max = col_range[2],
+  #         value = round(mean(col_range), 0),
+  #         step = step,
+  #         width = "100px",
+  #         lineCap = "round"
+  #       )
+  #       knob_inputs[[col]] <- knob_input
+  #     } else if (col_type == "factor") {
+  #       unique_levels <- levels(tree_data()$selected_prescript_data[[col]])
+  #       select_input <- selectInput(
+  #         inputId = paste0("input_", col),
+  #         label = paste("Vrijednost za", col),
+  #         choices = unique_levels
+  #       )
+  #       select_inputs[[col]] <- select_input
+  #     }
+  #   }
+  # 
+  #   fluidRow(
+  #     column(width = 6, align = "center", do.call(tagList, knob_inputs)),
+  #     column(width = 6, align = "center", do.call(tagList, select_inputs))
+  #   )
+  # })
+  
+  
+  
+  
+  
+  
+  
+  
+  #OVU SAM KORISTIOOO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  # output$selected_values_table <- renderTable({
+  #   reactive_data_value <- tree_data()$selected_prescript_data
+  #   if (!is.null(reactive_data_value)) {
+  #     selected_values <- sapply(colnames(reactive_data_value), function(col) {
+  #       input_id <- paste0("input_", col)
+  #       input_value <- input[[input_id]]
+  #       input_value
+  #     })
+  # 
+  #     data_from_UI <- data.frame(
+  #       Varijabla = colnames(reactive_data_value),
+  #       Vrijednost = selected_values
+  #     )
+  # 
+  # 
+  #     return(data_from_UI)
+  # 
+  #   }
+  # }, rownames = FALSE)
+  
+  
+  
+  
+  influental_result_data <- reactiveValues(selected_values = NULL)
+
+  # influental result table
+  output$selected_values_table <- renderUI({
+    reactive_data_value <- tree_data()$selected_prescript_data
+    
+    if (!is.null(reactive_data_value)) {
+      selected_values <- sapply(colnames(reactive_data_value), function(col) {
+        input_id <- paste0("input_", col)
+        input_value <- input[[input_id]]
+        input_value
+      })
+      
+      data_from_UI <- data.frame(
+        Varijabla = colnames(reactive_data_value),
+        Vrijednost = selected_values
+      )
+      
+      
+      rownames(data_from_UI) <- NULL
+      
+      # Spremanje rezultata u reactiveValues objekt
+      influental_result_data$selected_values <- data_from_UI
+      
+      
+      
+      num_rows <- nrow(data_from_UI)
+      
+      table <- data_from_UI %>%
+        kbl(format = "html", escape = FALSE, col.names = c("Feature", "Selected Value")) %>%
+        kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+        row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+        row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+        
+        column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+      
+      
+      #return(table)
+      HTML(as.character(table))
+    }
+  }) 
+  
+  
+  
+  
+  
+  reactive_prescript_predict <- reactiveValues(prescript_prediction = NULL)
+  
+  # Expected result output
+  output$expected_results <- renderUI({
+    
+    influent_df<- influental_result_data$selected_values
+    train_df<-split_data()$train_data
+    model<-tree_data()$tree_model
+    prediction_type <- split_data()$prediction_type
+    
+    model_type <- tree_data()$predictions$model_type
+    
+    
+    if (!is.null(influent_df)) {
+      
+      
+      #rownames(influent_df) <- NULL
+      influent_df <- spread(influent_df, key = Varijabla, value = Vrijednost)
+      
+      # match columns name
+      selected_columns_train_df <- train_df %>% select(all_of(names(influent_df)))
+      
+      
+      #change data type in influent_df based on selected_columns_train_df
+      processed_influent_df <- map_data_types_from_UI(selected_columns_train_df, influent_df)
+      
+      
+      first_row_train_df <- train_df[1, ]
+      
+      
+      # Update traning_df based on sliser DF
+      cols_to_update_train_df <- intersect(names(first_row_train_df), names(processed_influent_df))
+      first_row_train_df[cols_to_update_train_df] <- processed_influent_df[cols_to_update_train_df]
+      
+      
+      prescript_prediction <- generate_predictions_prescript(model, first_row_train_df, prediction_type)
+      
+      
+      
+      if (model_type == "Classification") {
+        
+        
+        predictions_class <- prescript_prediction$predictions_df$pred_data 
+        
+        predictions_class <- as.data.frame(predictions_class)
+        
+        # rename columns function
+        renamed_data <- rename_columns(predictions_class)
+        
+        #extract row  with biggest probability for category 
+        selected_category <- extract_max_row(renamed_data)
+        
+        # catch reactiv predictive probab. values
+        reactive_prescript_predict$selected_category <- selected_category 
+        
+        
+        # select column with biggest probability for category function
+        selected_probability <- select_columns(selected_category)
+        
+        #selected_probability <- as.data.frame(selected_probability)
+        
+        rownames(selected_probability) <- NULL
+        
+        num_rows <- nrow(selected_probability)
+        num_col<-ncol(selected_probability)
+        
+        table <- selected_probability %>%
+          kbl(format = "html", escape = FALSE) %>% #col.names = c("Feature", "Selected Value")
+          kable_styling(bootstrap_options = c( "strike", "hover","responsive", "condensed"), full_width = FALSE, font_size = 13) %>%
+          row_spec(1:num_rows, background = "#051524", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          
+          column_spec(1:num_col,  color = "#66CDAA",  #border_left = TRUE, border_right = TRUE,
+                      extra_css = "border: 1px solid #16525e;"
+          )
+        
+        
+      } else if (model_type == "Regression") {
+        
+        reg_predicted_values<-prescript_prediction$predictions_df$pred_data$Predicted
+        
+        reg_predicted_values <- data.frame(reg_predicted_values)
+        
+        reg_predicted_values <- reg_predicted_values %>%
+          rename("Predicted Value" = "reg_predicted_values")
+        
+        reg_predicted_values["Predicted Value"] <- round(reg_predicted_values["Predicted Value"], 2)
+        
+        # catch reactiv predictive probab. values
+        reactive_prescript_predict$reg_predicted_values <- reg_predicted_values 
+        
+        num_rows <- nrow(reg_predicted_values)
+        num_col<-ncol(reg_predicted_values)
+        
+        table <- reg_predicted_values %>%
+          kbl(format = "html", escape = FALSE) %>%  #col.names = c("Predicted Value")
+          kable_styling(bootstrap_options = c( "strike", "hover","responsive", "condensed"), full_width = FALSE, font_size = 13) %>%
+          row_spec(1, background = "#051524", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          
+          column_spec(1, color = "#66CDAA",  extra_css = "border: 1px solid #16525e;") 
+        
+        
+      }
+      
+      HTML(as.character(table))
+      
+    }
+  })  
+  
+  
+  
+  output$category_probability <- renderPlotly({
+    
+    #model_type <- tree_data()$predictions$model_type
+    
+    #get catched reaktive object
+    selected_category <- reactive_prescript_predict$selected_category
+    
+    # transform dataframe call function
+    selected_category <- transform_dataframe(selected_category)
+    
+    
+    plot_ly(
+      data = selected_category,
+      x = ~Probability, # Probability
+      y = ~Category,   #Category
+      type = "bar",
+      marker = list(color = c("#66CDAA")),
+      width = 180,  # Širina grafikona
+      height = 350  # Visina grafikona
+      
+    ) %>%
+      layout(
+        title = list(
+          text = "Class Probability",
+          font = list(size = 12, color = "#a4b3b6")  
+        ),
+        yaxis = list(
+          #categoryorder = "total ascending",
+          #title = "Class Probability",
+          titlefont = list(size = 12, color = "#a4b3b6"),
+          tickfont = list(size = 11, color = "#a4b3b6"),
+          side = "left" # Poravnanje teksta na levoj strani
+        ),
+        xaxis = list(
+          title = "Probabilities",
+          titlefont = list(size = 12, color = "#a4b3b6"),
+          tickfont = list(size = 11, color = "#a4b3b6")
+        ),
+        paper_bgcolor = "#0f2437",  
+        plot_bgcolor = "#0f2437", 
+        showlegend = FALSE,
+        margin = list(l = 10, r = 10, t = 50, b = 10),  
+        bargap = 0.4  
+      )
+    
+    
+    
+  })
+  
+  
+  
+  output$predicted_prescript_value <- renderPlotly({
+    
+    predicted_values_array<-tree_data()$predictions$predictions_df$Train$Predicted 
+    
+    
+    reg_predicted_values <- reactive_prescript_predict$reg_predicted_values  
+    
+    value <- reg_predicted_values$`Predicted Value`
+    
+    min_value <-min(round(as.numeric(predicted_values_array),0))
+    max_value <- max(round(as.numeric(predicted_values_array),0))
+    
+    
+    plot_ly(
+      x = c(min_value, value),
+      y = c(1, 1),
+      type = "scatter",
+      mode = "lines+text",
+      line = list(width = 80),  # Povećajte debljinu linije
+      width = 180,  # Širina grafikona
+      height = 100  # Visina grafikona
+    ) %>% layout(
+      title = list(
+        text = "Predicted Value",
+        font = list(size = 12, color = "#a4b3b6")  
+      ),
+      xaxis = list(range = c(min_value, max_value), showgrid = FALSE, titlefont = list(size = 12, color = "#a4b3b6"), 
+                   tickfont = list(size = 11, color = "#a4b3b6"), title = "", linecolor = "#a4b3b6"),  
+      yaxis = list(showticklabels = FALSE, showgrid = FALSE, linecolor = "#a4b3b6"),
+      showlegend = FALSE,
+      paper_bgcolor = "#0f2437",  
+      plot_bgcolor = "#0f2437",
+      margin = list(l = 1, r = 4, t = 50, b = 10)
+      
+    ) %>% 
+      # add_annotations(
+      #   x = 0.05,  
+      #   y = 1,
+      #   text =as.character(value),
+      #   xanchor = "left",
+      #   showarrow = FALSE,
+      #   font = list(color = "#0f2437")  
+      # )   %>%
+      add_trace(
+        type = "scatter",
+        fill = "toself",
+        fillcolor = "#66CDAA",     
+        line = list(color = "#66CDAA"),
+        showlegend = FALSE,
+        hoverinfo = "text" 
+      ) 
+    
+    
+  })
+  
+  
+  output$prescriptiv_plot_UI <- renderUI({
+    
+    model_type <- tree_data()$predictions$model_type
+    dependent_col <- input$dependent_var
+    
+    
+    if (model_type == "Classification") {
+      div(
+        br(),
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        plotlyOutput("category_probability"),
+        helpText(paste("You are working on a predictive scenario for", dependent_col, "target feature:" ))
+        
+      )
+      
+    } else if (model_type == "Regression") {
+      div(
+        br(),
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        plotlyOutput("predicted_prescript_value"),
+        helpText(paste("You are working on a predictive scenario for", dependent_col, "target feature:" ))
+        
+      )
+      
+    }
+    
+  })
+  
+  
+  
+  saved_rules <- reactiveValues(rules = NULL)
+  
+  #Display rules table
+  output$rulesTable <- renderTable({
+    
+    model_type <- tree_data()$predictions$model_type
+    model <- tree_data()$tree_model
+    
+    if (model_type == "Classification") {
+      rules <- rpart.rules(model, cover = TRUE, roundint = FALSE, extra = 4)
+    } else if (model_type == "Regression") {
+      rules <- rpart.rules(model, cover = TRUE, roundint = FALSE)
+    }
+    
+    # Uzmite trenutne nazive kolona
+    current_colnames <- colnames(rules)
+    
+    # Postavite nove nazive za prvu, drugu i poslednju kolonu
+    #current_colnames[1] <- "Novi Naziv Prve Kolone"
+    current_colnames[1] <- paste("Target Feature -", current_colnames[1], sep = " ")
+    current_colnames[3] <- "Rules  ⟶ "
+    current_colnames[length(current_colnames)] <- "% Observations in Rule"
+    
+    # Postavite nove nazive kolona u tabelu
+    colnames(rules) <- current_colnames
+    
+    saved_rules$rules <- rules 
+    
+    return(rules)
+    
+    
+  }, colnames = TRUE, align = 'l', spacing = 's', bordered = TRUE, style = "white-space: nowrap;")
+  
+  
+  
+  #Download Rules  table
+  output$downloadRules <- downloadHandler(
+    filename = function() {
+      "myRules.xlsx"
+    },
+    content = function(file) {
+      rules <- saved_rules$rules # get rules tabele from reactive 
+      write.xlsx(rules, file)
+    }
+  )
+  
+  
+  
+  
+  
+  
+  predictions_table <- reactiveValues(predictions = NULL)  # predicted values added in df prediction
+  
+  
+  
+  
+  
+  output$predictionsTable <- renderUI({
+    
+    selected_cols <- selected_columns_pred()
+    
+    data_prediction <- data_pred()
+    data_prediction <- data_prediction[, ..selected_cols, drop = FALSE]
+    
+    train_data <- split_data()$train_data
+    dependent_col <- input$dependent_var
+    
+    train_data <- train_data %>%
+      select(-{{dependent_col}})
+    
+    #change data type in prediction based on columns train_df
+    data_prediction <- as.data.frame(data_prediction)
+    data_prediction <- map_data_types(train_data, data_prediction)
+    
+    
+    model_type <- tree_data()$predictions$model_type
+    prediction_type <- split_data()$prediction_type
+    model <- tree_data()$tree_model
+    
+    
+    
+    if (exists("data_prediction") && exists("train_data")) {
+      
+      
+      tryCatch({
+        
+        predictions <- generate_predictions_prescript(model, data_prediction, prediction_type)
+        
+        if(model_type == "Classification"){
+          
+          pred_data <- predictions$predictions_df$pred_data
+          
+          # Iterte through columns
+          for (i in 1:ncol(pred_data)) {
+            col_name <- colnames(pred_data)[i]
+            data_prediction <- bind_cols(data_prediction, pred_data[, i])
+            colnames(data_prediction)[ncol(data_prediction)] <- col_name
+          }
+          
+          
+        }else if (model_type == "Regression"){
+          
+          pred_data <- predictions$predictions_df$pred_data
+          
+          
+          for (i in 1:ncol(pred_data)) {
+            col_name <- colnames(pred_data)[i]
+            data_prediction <- bind_cols(data_prediction, pred_data[, i])
+            colnames(data_prediction)[ncol(data_prediction)] <- col_name
+          }
+          
+          
+        }
+        
+        predictions_table$predictions <- data_prediction
+        
+        #return(data_prediction)
+        
+        num_rows <- nrow(data_prediction)
+        
+        table <- data_prediction %>%
+          kbl(format = "html", escape = FALSE) %>% #, col.names = c("Feature", "Selected Value")
+          kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+          row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          
+          column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+        
+        
+        #return(table)
+        HTML(as.character(table))
+        
+      }, error = function(e) {
+        # Get errors
+        # we can display error on UI
+      })
+    }else{
+      div(
+        id = "custom-alert",
+        "You must have both Training Data and Prediction Data!"
+      )
+    }
+    
+  })
+  
+  
+  
+  
+  
+  
+  #Download Predictions  table
+  output$downloadPredictions <- downloadHandler(
+    filename = function() {
+      "myPredictions.xlsx"
+    },
+    content = function(file) {
+      predictions_df <- predictions_table$predictions # get predictions tabele from reactive 
+      write.xlsx(predictions_df, file)
+    }
+  )
+  
+  
+  
+  
+  
+  output$display_text_rules <- renderText({
+    
+    dependent_col <- input$dependent_var
+    target_feature <- as.character(dependent_col)
+    
+    rules_table <- saved_rules$rules # get rules tabele from reactive 
+    
+    if (!is.null(rules_table) && ncol(rules_table) > 0) {
+      
+      generate_text_rules(rules_table, target_feature)
+      
+    } else {
+      ""
+    }
+  })
+  
+  
+  output$display_text_predictions <- renderText({
+    
+    model_type <- tree_data()$predictions$model_type
+    
+    dependent_col <- input$dependent_var
+    target_feature <- as.character(dependent_col)
+    
+    predictions_df <- predictions_table$predictions # get predictions tabele from reactive
+    
+    if (!is.null(predictions_df) && ncol(predictions_df) > 0) {
+      
+      if (model_type == "Classification"){
+        generate_text_predictions_class(predictions_df, target_feature)
+        
+      }else if (model_type == "Regression"){
+        generate_text_predictions_regress(predictions_df, target_feature)
+      }
+      
+    }else {
+      ""
+    }
+    
+  })
+  
+  
+  output$display_text_missing_columns <- renderText({
+    
+    #df_prediction <- df_for_prediscion$pred_df
+    #df_train <- train_df_unselect_target$train_df
+    
+    #print(colnames(df_prediction))
+    selected_cols <- selected_columns_pred()
+    
+    data_prediction <- data_pred()
+    data_prediction <- data_prediction[, ..selected_cols, drop = FALSE]
+    
+    train_data <- split_data()$train_data
+    dependent_col <- input$dependent_var
+    
+    train_data <- train_data %>%
+      select(-{{dependent_col}})
+    
+    #change data type in prediction based on columns train_df
+    data_prediction <- as.data.frame(data_prediction)
+    data_prediction <- map_data_types(train_data, data_prediction)
+    
+    generate_text_missing_columns(train_data, data_prediction )
+    
+  })
+  
+  
+  
+  
+  
+  output$dynamic_ui_rules <- renderUI({
+    
+    train_data <- split_data()$train_data
+    
+    show_rules <- ncol(train_data) > 0 && nrow(train_data) > 0
+    
+    if(show_rules){
+      
+      tagList(
+        fluidRow(
+          tags$hr(style="border-color: #009999; margin-top: 3px;"),
+          column(width = 9, align = "center",
+                 h5("Decision Rules"),
+                 tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                 
+                 div(
+                   id = "summary_rules_div",
+                   style = "border: 2px solid #387a87; padding: 10px; background-color: rgba(123,192,206, 0.7); display: flex; align-items: center;",
+                   tags$img(src = "information.svg", width = "30px", height = "30px",style = "margin-right: 10px;"),
+                   textOutput("display_text_rules")
+                   
+                 ),
+                 
+          ),
+          #tags$hr(style="border-color: #009999; margin-top: 3px;"),
+          column(width = 3, align = "left", style = "text-align: left; display: flex; flex-direction: column; justify-content: flex-end;",
+                 p("Export Excel:", style = "margin-top: 0; font-size: 14px; align-items: center;"),
+                 downloadButton("downloadRules", "Rules")
+                 
+          )
+          
+        ),
+        fluidRow(
+          
+          column(width = 12, align = "center",
+                 br(),
+                 div(
+                   style = 'overflow-x: auto; overflow-y: auto; margin-top: 0; max-height: 400px; font-size: 11px; ',
+                   withSpinner(tableOutput("rulesTable"), type = 2),
+                   br()
+                 )
+                 
+                 
+          )
+          
+        )
+      )
+    }  else {
+      div(
+        id = "custom-alert",
+        "You need to generate the model first!"
+      )
+    }
+    
+    
+  })
+  
+  
+  
+  output$dynamic_ui_predictions <- renderUI({
+    
+    selected_cols <- selected_columns_pred()
+    
+    data_prediction <- data_pred()
+    
+    data_prediction <- data_prediction[, ..selected_cols, drop = FALSE]
+    
+    
+    
+    train_data <- split_data()$train_data
+    dependent_col <- input$dependent_var
+    
+    train_data <- train_data %>%
+      select(-{{dependent_col}})
+    
+    #change data type in prediction based on columns train_df
+    data_prediction <- as.data.frame(data_prediction)
+    data_prediction <- map_data_types(train_data, data_prediction)
+    
+    
+    show_predictions <- check_differences(train_data, data_prediction)
+    show_predictions_2 <- nrow(data_prediction) > 0  && ncol(data_prediction) > 0
+    show_predictions_3 <- nrow(train_data) > 0  && ncol(train_data) > 0
+    
+    #print(show_predictions_2)
+    #print(nrow(data_prediction))
+    #print(show_predictions_3)
+    
+    if(show_predictions_2 && show_predictions_3){
+      
+      if(show_predictions){ #if true
+        tagList(
+          fluidRow(
+            tags$hr(style="border-color: #009999; margin-top: 3px;"),
+            column(width = 9, align = "center",
+                   h5("Predictions"),
+                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                   div(
+                     id = "summary_predictions_div",
+                     style = "border: 2px solid #387a87; padding: 10px; background-color: rgba(123,192,206, 0.7); display: flex; align-items: center;",
+                     tags$img(src = "information.svg", width = "30px", height = "30px",style = "margin-right: 10px;"),
+                     br(),
+                     textOutput("display_text_predictions")
+                     
+                   ),
+                   
+            ),
+            column(width = 3, align = "left", style = "text-align: left; display: flex; flex-direction: column; justify-content: flex-end;",
+                   p("Export Excel:", style = "margin-top: 0; font-size: 14px; align-items: center;"),
+                   downloadButton("downloadPredictions", "Predictions"),
+                   #actionButton("make_prediction", "Predict")
+            )
+            
+          ),
+          fluidRow(
+            column(width = 12, align = "center",
+                   br(),
+                   div(
+                     style = 'overflow-x: auto; overflow-y: auto; margin-top: 0; max-height: 400px; font-size: 11px; ',
+                     #withSpinner(tableOutput("predictionsTable"), type = 2)
+                     withSpinner(uiOutput("predictionsTable"), type = 2)
+                     
+                   )
+                   
+                   # div(style = 'overflow-x: auto; overflow-y: auto; margin-top: 0; max-height: 400px; font-size: 11px; ',
+                   #     class = "predictions-table",  tableOutput('predictionsTable'))
+                   
+                   
+            )
+            
+          )
+          
+          
+        )
+        
+      }else{
+        div(
+          id = "custom-alert",
+          textOutput("display_text_missing_columns")
+        )
+        
+      }
+      
+    }else{
+      div(
+        id = "custom-alert",
+        "You must have both Training Data and correct Prediction Data with the same features!"
+      )
+      
+    }
+    
+    
+    
+    
+  })
+  
+  
+  
+  
+})

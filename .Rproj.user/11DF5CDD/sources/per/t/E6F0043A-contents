@@ -1,0 +1,2614 @@
+shinyServer(function(input, output, session) {
+
+  source("D:/MyData/Application B2B sales/scripts/prepare_data.R") 
+  source("D:/MyData/Application B2B sales/scripts/association_rules.R") 
+  source("D:/MyData/Application B2B sales/scripts/rfm_analysis.R") 
+  source("D:/MyData/Application B2B sales/scripts/lightGBM_sales_prediction.R") 
+  
+
+  # read products data
+  data_product <- reactive({
+     df <- read.csv("D:/MyData/Application B2B sales/data/products.csv", sep = ";")
+     df <- format_data(df)
+
+
+  })
+  
+  # read customers data
+  data_customer <- reactive({
+    df <- read.csv("D:/MyData/Application B2B sales/data/customers.csv", sep = ";")
+    df <- format_data(df)
+    
+    
+  })
+  
+  
+  # read location data
+  data_location <- reactive({
+    df <- read.csv("D:/MyData/Application B2B sales/data/sales_location.csv", sep = ";")
+    df <- format_data(df)
+    
+  })
+  
+  
+  
+  # reactive object for product df
+  rv_products <- reactiveValues(
+      df = NULL
+  )
+  
+  # reactive object for customer df
+  rv_customer <- reactiveValues(
+    df_customer = NULL
+  )
+  
+  # reactive object for sales location df
+  rv_sales_location <- reactiveValues(
+    df_sales_location = NULL
+  )
+  
+  
+  
+  # Form  filter for product dataset
+  observe({
+
+    df_products <- data_product()
+    rv_products$df <- df_products
+    
+    # Postavi izbor u selectizeInput kontrolama
+    updateSelectizeInput(session, "product_filter", choices = unique(df_products$Product), server = TRUE)
+    updateDateRangeInput(session, "date_filter", start = min(df_products$InvoiceDate), end = max(df_products$InvoiceDate))
+    updateSelectizeInput(session, "customer_filter", choices = unique(df_products$CustomerID), server = TRUE)
+    updateSelectizeInput(session, "region_filter", choices = unique(df_products$Region), server = TRUE)
+    
+    numericInput('select_item_frequency', 'Minimum Products Frequency', 1, min = 1, max = 100)
+    
+  })
+  
+  
+  # Form  filter for customer dataset  
+  observe({
+    df_customer <- data_customer()
+    rv_customer$df_customer <- df_customer
+    
+    # Postavi izbor u selectizeInput kontrolama
+    updateDateRangeInput(session, "date_filter_customer", start = min(df_customer$order_date), end = max(df_customer$order_date))
+    updateSelectizeInput(session, "customer_filter_customer", choices = unique(df_customer$customer_id), server = TRUE)
+    updateSelectizeInput(session, "location_filter_customer", choices = unique(df_customer$delivery_location), server = TRUE)
+    
+
+  })
+  
+  
+  
+  # Form  filter for sales-locations dataset  
+  observe({
+    
+    df_location <- data_location()
+    #print(colnames(df_products))
+    rv_sales_location$df_sales_location <- df_location
+    
+    # Postavi izbor u selectizeInput kontrolama
+    updateSelectizeInput(session, "product_filter_locations", choices = unique(df_location$Product), server = TRUE)
+    updateDateRangeInput(session, "date_filter_locations", start = min(df_location$InvoiceDate), end = max(df_location$InvoiceDate))
+    updateSelectizeInput(session, "customer_filter_locations", choices = unique(df_location$CustomerID), server = TRUE)
+    updateSelectizeInput(session, "region_filter_locations", choices = unique(df_location$Region), server = TRUE)
+    
+    #numericInput('select_item_frequency', 'Minimum Products Frequency', 1, min = 1, max = 100)
+    
+  })
+  
+  
+
+  # filtering product data
+  filtered_product_data <- reactive({
+    req(rv_products$df)
+    
+    selected_products <- rv_products$df %>%
+      count(Product) %>%
+      arrange(desc(n))
+    
+    # Korisnički unesena vrednost limit_item_frequency (default: 1)
+    limit_item_frequency <- input$select_item_frequency
+    
+    if (!is.null(limit_item_frequency)) {
+      selected_products <- selected_products %>%
+        filter(n > limit_item_frequency)
+    }
+    
+    
+    filtered_data <- rv_products$df %>%
+      filter(
+        Product %in% input$product_filter,
+        InvoiceDate >= input$date_filter[1] & InvoiceDate <= input$date_filter[2],
+        CustomerID %in% input$customer_filter,
+        Region %in% input$region_filter
+      )
+    
+    filtered_data <- filtered_data[filtered_data$Product %in% selected_products$Product, ]
+    
+    
+    return(filtered_data)
+  })
+  
+  
+  
+  
+  # filtering customers data
+  filtered_customer_data <- reactive({
+    req(rv_customer$df_customer)
+    
+
+    filtered_data <- rv_customer$df_customer %>%
+      filter(
+        order_date >= input$date_filter_customer[1] & order_date <= input$date_filter_customer[2],
+        customer_id %in% input$customer_filter_customer,
+        delivery_location %in% input$location_filter_customer
+      )
+    
+    
+    return(filtered_data)
+    
+  })
+  
+  
+  
+  # filtering sales - location data
+  filtered_sales_location_data <- reactive({
+    
+    req(rv_sales_location$df_sales_location)
+    
+    filtered_data <- rv_sales_location$df_sales_location %>%
+      filter(
+        Product %in% input$product_filter_locations,
+        InvoiceDate >= input$date_filter_locations[1] & InvoiceDate <= input$date_filter_locations[2],
+        CustomerID %in% input$customer_filter_locations,
+        Region %in% input$region_filter_locations
+        
+        #delivery_location %in% input$location_filter_locations
+      )
+    
+    
+    return(filtered_data)
+    
+  })
+  
+  
+
+  
+  # display product dataset in table
+  output$products_data <- renderUI({
+    reactable(
+      filtered_product_data(),
+      defaultPageSize = 15,
+      filterable = TRUE,
+      searchable = TRUE,
+      showSortable = TRUE,
+      resizable = TRUE,
+      wrap = FALSE,
+      bordered = TRUE,
+      minRows = 10,
+      highlight = TRUE,
+      style = list(
+        #backgroundColor = "#a3bcc0",
+        #color = "#000000"     # Change the color of the content to blue
+      )
+    )
+    
+  })
+  
+  
+  
+  # display customer dataset in table
+  output$customers_data <- renderUI({
+    reactable(
+      filtered_customer_data(),
+      defaultPageSize = 15,
+      filterable = TRUE,
+      searchable = TRUE,
+      showSortable = TRUE,
+      resizable = TRUE,
+      wrap = FALSE,
+      bordered = TRUE,
+      minRows = 10,
+      highlight = TRUE,
+      style = list(
+        #backgroundColor = "#a3bcc0",
+        #color = "#000000"     # Change the color of the content to blue
+      )
+    )
+    
+  })
+  
+  
+  # display sales - location dataset in table
+  output$sales_location_data <- renderUI({
+    reactable(
+      filtered_sales_location_data(),
+      defaultPageSize = 15,
+      filterable = TRUE,
+      searchable = TRUE,
+      showSortable = TRUE,
+      resizable = TRUE,
+      wrap = FALSE,
+      bordered = TRUE,
+      minRows = 10,
+      highlight = TRUE,
+      style = list(
+        #backgroundColor = "#a3bcc0",
+        #color = "#000000"     # Change the color of the content to blue
+      )
+    )
+    
+  })
+  
+  
+
+  observeEvent(input$open_modal_choose_tems, {
+    showModal(modalDialog(
+      title = "title",
+      easyClose = TRUE,  
+      uiOutput("modal_content"),
+      footer = tagList(
+        modalButton("Close")
+      )
+    ))
+  })
+  
+
+  
+  
+  transaction_data_and_rules <- reactive({
+
+    limit_item_frequency <- input$select_item_frequency
+    
+    filtered_product_data <- filtered_product_data()
+    transaction_data <- get_transaction_data(filtered_product_data)
+    
+
+    return(transaction_data = transaction_data)
+
+
+  })
+  
+  
+  
+
+
+  output$modal_content <- renderUI({
+
+    trans_data <- transaction_data_and_rules()
+    
+    product_data_frame <- trans_data[["transaction_data"]]@itemInfo[["labels"]]
+    product_data_frame <- as.data.frame(product_data_frame)
+
+    colnames(product_data_frame) <- "PRODUCT"
+    product_data_frame <- distinct(product_data_frame, PRODUCT)
+   
+
+
+    fluidRow(
+      selectizeInput("lhs_item1", "Odaberi stavku za lhs 1:", choices = c(product_data_frame$PRODUCT, "NULL"), multiple = FALSE, selected = "NULL"),
+      selectizeInput("lhs_item2", "Odaberi stavku za lhs 2:", choices = c(product_data_frame$PRODUCT, "NULL"), multiple = FALSE, selected = "NULL"),
+      selectizeInput("rhs_item1", "Odaberi stavku za rhs 1:", choices = c(product_data_frame$PRODUCT, "NULL"), multiple = FALSE, selected = "NULL"),
+      selectizeInput("rhs_item2", "Odaberi stavku za rhs 2:", choices = c(product_data_frame$PRODUCT, "NULL"), multiple = FALSE, selected = "NULL"),
+
+      #numericInput('select_item_frequency', 'Minimum Products Frequency', 1, min = 1, max = 100)
+    )
+  })
+  
+
+  rules_results <- reactiveValues(rules_object = NULL)
+  rules_data_frame <- reactiveValues(rules_stat = NULL)
+  
+  
+  observeEvent(input$run_assoc_rules, {
+    if (input$run_assoc_rules) {
+
+      output$rules_table <- renderUI({
+
+
+        support <- input$supp
+        confidence <-input$conf
+        maxlen <- input$maxlen
+        minlen <- input$minlen
+
+        lhs_item1 <- input$lhs_item1
+        lhs_item2 <- input$lhs_item2
+        rhs_item1 <- input$rhs_item1
+        rhs_item2 <- input$rhs_item2
+
+
+
+        transaction_data <- transaction_data_and_rules()$transaction_data
+        #rules <- get_rules(transaction_data$transaction_data, support, confidence, maxlen, minlen, lhs_item1, lhs_item2, rhs_item1, rhs_item2)
+        rules <- get_rules(transaction_data, support, confidence, maxlen, minlen, lhs_item1, lhs_item2, rhs_item1, rhs_item2)
+        
+        rules_results$rules_object <- rules
+        
+        rules_df <- as(rules, "data.frame")
+        
+        rules_data_frame$rules_stat <- rules_df
+        
+
+        if (exists("rules_df")) {
+
+
+          tryCatch({
+
+            num_rows <- nrow(rules_df)
+
+            table <- rules_df %>%
+              kbl(format = "html", escape = FALSE) %>% #, col.names = c("Feature", "Selected Value")
+              kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+              row_spec(1:num_rows, background = "#051524", align = "left", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+              row_spec(0, background = "#0f2437", align = "left", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+
+              column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+
+
+            #return(table)
+            HTML(as.character(table))
+
+          }, error = function(e) {
+            # Get errors
+            # we can display error on UI
+          })
+        }else{
+          div(
+            id = "custom-alert",
+            "First select the necessary parameters and then run the algorithm!"
+          )
+        }
+
+      })
+
+    }else{
+      output$rules_table <- NULL
+    }
+  })
+  
+  
+  
+  
+  # for display filter info
+  selected_items <- reactiveValues(Region = character(0), 
+                                   Customer = character(0), 
+                                   Date = character(0))
+  observe({
+    selected_items$Region <- input$region_filter
+    selected_items$Customer <- input$customer_filter
+    selected_items$Date <- as.character(input$date_filter)
+  })
+  
+  
+  
+
+   
+   output$filters_info <- renderUI({
+     
+     tags$div(
+       tags$p("Region:" , paste(selected_items$Region, collapse = ", ")),
+       tags$p("Customer: ", paste(selected_items$Customer, collapse = ", ")),
+       #tags$p("Date: ", paste(rev(selected_items$Date), collapse = "   to   "))
+       tags$p("Date: ", paste(selected_items$Date, collapse = "   to   "))
+       
+     )
+     
+   })
+   
+   
+   output$filters_info_rules <- renderUI({
+     
+     tags$div(
+       tags$p("Region:" , paste(selected_items$Region, collapse = ", ")),
+       tags$p("Customer: ", paste(selected_items$Customer, collapse = ", ")),
+       #tags$p("Date: ", paste(rev(selected_items$Date), collapse = "   to   "))
+       tags$p("Date: ", paste(selected_items$Date, collapse = "   to   "))
+       
+     )
+     
+   })
+   
+   
+
+   
+   output$filters_info_past_next_delevery <- renderUI({
+     tags$div(
+       tags$p("You have selected the following categories and time range to view:", style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+       tags$hr(style="border-color: #009999; margin-top: 3px;"),
+       
+       tags$p("Region:" , paste(selected_items$Region, collapse = ", ")),
+       tags$p("Customer: ", paste(selected_items$Customer, collapse = ", ")),
+       tags$p("Date: ", paste(selected_items$Date, collapse = "   to   ")), 
+       style = "font-size: 12px; color: #a4b3b6;")
+      
+   })
+   
+   
+   
+   
+  
+  output$top_products_count <- renderPlotly({
+
+    products_count <- transaction_data_and_rules()$selected_products
+  
+    top_20_products_count <- products_count %>% slice_head(n = 50)
+   
+    plot_ly(
+      data = top_20_products_count,
+      x = ~n,
+      y = ~Product,
+      type = "bar",
+      marker = list(color = c("#7bc0ce")),
+      width = 600,  # Širina grafikona
+      height = 700  # Visina grafikona
+    ) %>% 
+      layout(
+        yaxis = list(
+          categoryorder = "total ascending",
+          title = "",
+          titlefont = list(size = 14, color = "#a4b3b6"),
+          tickfont = list(size = 11, color = "#a4b3b6"),
+          side = "left" # Poravnanje teksta na levoj strani
+        ),
+        xaxis = list(
+          title = "Top 50 Delivered Products",
+          titlefont = list(size = 14, color = "#a4b3b6"),
+          tickfont = list(size = 11, color = "#a4b3b6")
+        ),
+        paper_bgcolor = "#16525e",  # Transparentna boja pozadine papira
+        plot_bgcolor = "#16525e",   # Transparentna boja pozadine grafikona
+        showlegend = FALSE,
+        margin = list(l = 10, r = 10, t = 50, b = 10),  # Podesite margine ovde
+        bargap = 0.4  # Podesite vrijednost bargap ovdje
+      )
+    
+  })
+  
+  
+  
+  
+  
+  
+  # summary statistics for transactions data
+  output$transaction_statist_table <- renderUI({
+
+    transaction_data <- transaction_data_and_rules()$transaction_data
+    
+    summary_transactions <- get_summary_transactions(transaction_data)
+    
+    length_summary <- summary_transactions@lengthSummary
+    
+    
+    length_summary_df <- data.frame(
+            Min = length_summary[["Min."]],
+            First_Qu = length_summary[["1st Qu."]],
+            Median = length_summary[["Median"]],
+            Mean = length_summary[["Mean"]],
+            Third_Qu = length_summary[["3rd Qu."]],
+            Max = length_summary[["Max."]]
+    )
+
+
+    num_rows <- nrow(length_summary_df)
+
+    table <- length_summary_df %>%
+      kbl(format = "html", escape = FALSE, col.names = c("Min", "1st Qu", "Median", "Mean", "3rd Qu.", "Max." )) %>%
+      kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+      row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+      row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+
+      column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+
+    HTML(as.character(table))
+
+  })
+  
+  
+  
+  
+   # display on absolute panel - summary statistics for transactions data
+    observeEvent(input$button_summary_transactions, {
+    if (input$button_summary_transactions) {
+
+      output$content_transactions_summary <- renderUI({
+
+
+          tagList(
+            absolutePanel(id = "controls", class = "panel panel-default panel-scroll-vertical", fixed = FALSE,
+                          draggable = TRUE, top = 60, left = "auto", right = 20, bottom = "auto",
+                          width = 800, height = 600,
+                          fluidRow(
+                            br(),
+                            h4("Product Delivery Statistics"),
+                                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                   column(width = 6,  # Prva kolona, širina 6
+                                          h6("Number of Products in the Invoice - Statistics"),
+                                          tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                          
+                                          tableOutput("transaction_statist_table"),
+
+                                          helpText("Min / Max: Minimum and maximum number of products in the invoice, 
+                                          1st Qu: Number of products up to 25% invoice,
+                                          Median: 50% of invoices have this number of products or less,
+                                          Mean: Average number of products on the invoice,
+                                          3rd Qu: Number of products up to 75% invoice")
+
+                                   ),
+                                   column(width = 6,  # Druga kolona, širina 6
+                                          
+                                          h6("Statistics are shown for"),
+                                          #textOutput("filters_info"),
+                                          tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                          htmlOutput("filters_info"),
+                                          #tags$hr(style="border-color: #009999; margin-top: 3px;")
+                                          
+                                          
+                                          
+                                   )
+                          ),
+
+                          fluidRow(
+                            tags$hr(style = "border-color: #009999; margin-top: 8px;"),
+                            h5("Top 50 Delivered Products"),
+                            br(),
+                            plotlyOutput("top_products_count")
+
+
+
+                          )
+
+            )
+          )
+
+      })
+    } else {
+      output$content_transactions_summary <- NULL
+    }
+  })
+
+  
+
+  
+    
+    # display rules statistics
+    output$rules_statist_table <- renderUI({
+      
+       req(input$run_assoc_rules)
+      
+        rules <-  rules_results$rules_object 
+        
+        summary_rules <- get_summary_rules(rules)
+        
+
+        length_summary <- summary_rules@lengthSummary
+        
+  
+        length_summary_df <- data.frame(
+          Min = length_summary[["Min."]],
+          First_Qu = length_summary[["1st Qu."]],
+          Median = length_summary[["Median"]],
+          Mean = length_summary[["Mean"]],
+          Third_Qu = length_summary[["3rd Qu."]],
+          Max = length_summary[["Max."]]
+        )
+        
+        
+  
+        
+        num_rows <- nrow(length_summary_df)
+        
+        table <- length_summary_df %>%
+          kbl(format = "html", escape = FALSE, col.names = c("Min", "1st Qu", "Median", "Mean", "3rd Qu.", "Max." )) %>%
+          kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+          row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          
+          column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+        
+        HTML(as.character(table))
+      
+      
+      
+    })
+  
+    
+    #display quality of rules - statistics
+    output$rules_quality_statist_table <- renderUI({
+      
+      req(input$run_assoc_rules)
+      
+      rules <-  rules_results$rules_object 
+      
+      summary_rules <- get_summary_rules(rules)
+      
+      
+      length_summary <- summary_rules@quality
+      
+      # translate and spread in df
+      length_summary <-as.data.frame(summary_rules@quality)
+      length_summary$Var1 <- NULL
+      length_summary$Row <- seq_len(nrow(length_summary))
+      length_summary <- spread(length_summary, key = "Var2", value = "Freq")
+      length_summary$Row <- NULL
+      length_summary <- as.data.frame(na.omit(apply(length_summary,2,function (x) x[order(is.na(x))])))
+      length_summary <- length_summary %>%
+          mutate_all(~gsub(":\\s*", ": ", .))
+
+      
+      num_rows <- nrow(length_summary)
+      
+      table <- length_summary %>%
+        kbl(format = "html", escape = FALSE, col.names = c("support", "confidence", "coverage", "lift", "count" )) %>%
+        kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+        row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+        row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+        
+        column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+      
+      HTML(as.character(table))
+      
+      
+      
+    })
+    
+    
+
+    # scatter plot support vs. confidence of rules
+     # output$scatter_plot_supp_confid <- renderPlotly({
+     # 
+     # 
+     #   rules_df <- rules_data_frame$rules_stat
+     # 
+     # 
+     #     scatter_plot <- plot_ly(
+     #       rules_df,
+     #       x = ~support,
+     #       y = ~confidence,
+     #       color = ~lift,
+     #       colors = c("#bddfe6","#314c52"),
+     #       type = "scatter",
+     #       mode = "markers",
+     #       #marker = list(size = 10, colorscale = "Greens"),
+     #       marker = list(size = 10),
+     #       text = ~paste("Rules:", rules, "<br>Support:", support, "<br>Confidence:", confidence, "<br>Lift:", lift),
+     #       hoverinfo = "text"  
+     #     ) %>%
+     #       layout(
+     #         xaxis = list(title = "Support"),
+     #         yaxis = list(title = "Confidence"),
+     #         coloraxis = list(colorbar = list(title = "Lift"))
+     #       )
+     # 
+     # 
+     # })
+    
+    
+    
+    # display on absolute panel - summary statistics for rules
+    observeEvent(input$button_summary_rules, {
+      if (input$button_summary_rules) {
+        
+        #req(input$run_assoc_rules)
+        
+        output$content_rules_summary <- renderUI({
+          
+          tagList(
+            absolutePanel(id = "controls2", class = "panel panel-default panel-scroll-vertical", fixed = FALSE,
+                          draggable = TRUE, top = 60, left = "auto", right = 20, bottom = "auto",
+                          width = 800, height = 600,
+                          
+                          fluidRow(
+                            br(),
+                            h4("Rules Statistics"),
+                                   tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                   column(width = 6,  # Prva kolona, širina 6
+                                          h6("Number of Products in Rule - Statistics"),
+                                          tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                            
+                                          tableOutput("rules_statist_table"),
+                                          
+                                          
+                                          helpText("Min / Max: Minimum and maximum number of products in the rule,
+                                          1st Qu: Number of products up to 25% rules,
+                                          Median: 50% of rules have this number of products or less,
+                                          Mean: Average number of products on the rule,
+                                          3rd Qu: Number of products up to 75% rules"),
+                                          #tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                          
+                                         
+                                          
+                                   ),
+                                   column(width = 6,  # Druga kolona, širina 
+                                         
+                                          
+                                          h6("Statistics are shown for"),
+                                          #textOutput("filters_info"),
+                                          tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                          htmlOutput("filters_info_rules"),
+
+                                          
+                                          
+                                   )
+                          ),
+                          
+                          fluidRow(
+                            tags$hr(style = "border-color: #009999; margin-top: 8px;"),
+                            h6("Quality of Rules - Statistics"),
+                            br(),
+                            tableOutput("rules_quality_statist_table")
+                            #plotlyOutput("scatter_plot_supp_confid")
+                            
+                          )
+                          
+            )
+          )
+          
+          
+        })
+      } else {
+        output$content_rules_summary <- NULL
+      }
+    })
+    
+    
+    
+
+    #NAPOMENA: U OVOM DIJELU ĆU POVEZATI PYTHON PREDIKCIJE SA TABELOM. Peedikcije koje će se snjimati u folder na server ću mergeati sa table_deleveries
+    # display time series and statistic past and next delivered
+    output$past_next_deliveries_table <- renderUI({
+
+      deliveries_df <- filtered_product_data()
+      
+      
+      table_a <- deliveries_df %>%
+          group_by(CustomerID, Product, InvoiceDate) %>%
+          summarise(TotalQuantity = sum(Quantity)) %>%
+          arrange(CustomerID, Product, as.Date(InvoiceDate, format="%m/%d/%Y"))
+      
+      table_a <- table_a %>%
+        group_by(CustomerID, Product) %>%
+        summarize(TotalQuantity = list(TotalQuantity))
+      
+      
+      table_b <- deliveries_df %>%
+        group_by(CustomerID, Product) %>%
+        summarise(
+          SD = round(sd(Quantity),2),
+          Mean = round(mean(Quantity), 2),
+          TotalSum = sum(Quantity)
+        )
+      
+      # Spajanje tablica prema CustomerID i Product
+      table_deleveries <- left_join(table_a, table_b, by = c("CustomerID", 
+                                                             "Product"))
+      
+      # Ime kolone koju želiš premestiti na kraj
+      move_column <- "TotalQuantity"
+      
+      # Premesti odabranu kolonu na kraj
+      table_deleveries <- table_deleveries %>%
+        select(-{{move_column}}, everything())
+      
+      
+      reactable(
+        table_deleveries,
+        style = list(fontFamily = "Work Sans, sans-serif", fontSize = "12px"),
+        defaultPageSize = 10,
+        filterable = TRUE,
+        striped = TRUE,
+        searchable = TRUE,
+        showSortable = TRUE,
+        #resizable = TRUE,
+        wrap = TRUE,
+        bordered = TRUE,
+        minRows = 10,
+        columns = list(
+          CustomerID = colDef(maxWidth = 100, name = "Customer ID", align = "center" ),
+          Product = colDef(maxWidth = 140, name = "Product", align = "center" ),
+          SD = colDef(maxWidth = 85, name = "Std. Deviation", align = "center" ),
+          Mean = colDef(maxWidth = 85, name = "Average", align = "center" ),
+          TotalSum = colDef(maxWidth = 90, name = "Total Quantity", align = "center" ),
+          TotalQuantity = colDef(
+            #name = "Product Delivery Time Series", 
+            name = paste("Product Delivery Time Series   -  from ", paste(selected_items$Date, collapse = "   to   ")),
+            align = "center" ,
+            cell = react_sparkline(
+              table_deleveries,
+              line_color = "#7bc0ce",
+              height = 80,
+              show_area = TRUE,
+              tooltip_type = 2,
+              highlight_points = highlight_points(first = "#4dffa6", last = "#4dffa6", min = "#f4667c", max = "#0857a5"),
+              labels = c("first", "last", "min", "max"),
+              bandline = "innerquartiles",
+            )
+          )
+          
+          
+        )
+      )
+      
+
+    })
+    
+    
+    #  RFM  CUSTOMERS AND LOCATION DELEVERY ------------------------------------------------------------------
+    
+    
+    
+    rfm_result_table_customers <- reactiveValues(rfm_customers_table = NULL)
+
+    
+    #customer rfm table
+    observeEvent(input$run_RFM, {
+      if (input$run_RFM) {
+        
+        monetary_bins <- input$select_monetary_bins
+        frequency_bins <- input$select_frequency_bins
+        recency_bins <- input$select_recency_bins
+        analysis_date  <- input$rfm_date_analysis
+        
+        df_customer <- filtered_customer_data()
+        
+        rfm_customer_table <- rfm_customers(df_customer, analysis_date, recency_bins, frequency_bins, monetary_bins)
+        
+
+        rfm_result_table_customers$rfm_customers_table <- rfm_customer_table # save RFM results
+                                                          
+        
+        output$modal_customer_rfm_table <- renderUI({
+          
+        
+          
+          fluidRow(
+            
+            reactable(
+              rfm_customer_table,
+              defaultPageSize = 15,
+              filterable = TRUE,
+              searchable = TRUE,
+              showSortable = TRUE,
+              resizable = TRUE,
+              wrap = FALSE,
+              bordered = TRUE,
+              minRows = 15,
+              highlight = TRUE,
+              style = list(
+                #backgroundColor = "#a3bcc0",
+                #color = "#000000"     # Change the color of the content to blue
+              )
+            )
+            
+          )
+          
+        })
+        
+      }
+      
+    })
+    
+    
+    
+    
+    observeEvent(input$open_modal_rfm_customers_table, {
+      showModal(modalDialog(
+        title = "RFM Analysis by Customers",
+        easyClose = TRUE,  
+        size = "xl",
+        uiOutput("modal_customer_rfm_table"),
+        footer = tagList(
+          downloadButton("download_rfm_customer_df", "Download Data"),
+          modalButton("Close")
+        )
+      ))
+    })
+    
+    
+    #Download rfm customer  table
+    output$download_rfm_customer_df <- downloadHandler(
+      filename = function() {
+        "myRFMcustomers.xlsx"
+      },
+      content = function(file) {
+        
+        #rfm_results <- rfm_result$rfm_two_tables   
+        
+        rfm_customer_table <- rfm_result_table_customers$rfm_customers_table
+        
+        write.xlsx(rfm_customer_table, file)
+      }
+    )
+    
+    
+    
+    
+    rfm_result_table_locations <- reactiveValues(rfm_locations_table = NULL)
+
+    
+    #location rfm table 
+    observeEvent(input$run_RFM_locations, {
+      if (input$run_RFM_locations) {
+
+        monetary_bins <- input$select_monetary_bins_locations
+        frequency_bins <- input$select_frequency_bins_locations
+        recency_bins <- input$select_recency_bins_locations
+        analysis_date  <- input$rfm_date_analysis_locations
+
+        df_customer <- filtered_customer_data()
+
+        rfm_locations_df <- rfm_locations(df_customer, analysis_date, recency_bins, frequency_bins, monetary_bins)
+
+        #rfm_locations_df <- rfm_results$rfm_locations
+
+
+        rfm_locations_df <- rfm_locations_df %>%
+          rename(delevery_location_id = customer_id)
+
+        rfm_result_table_locations$rfm_locations_table <- rfm_locations_df
+
+
+        output$modal_location_rfm_table <- renderUI({
+
+          fluidRow(
+            reactable(
+              rfm_locations_df,
+              defaultPageSize = 15,
+              filterable = TRUE,
+              searchable = TRUE,
+              showSortable = TRUE,
+              resizable = TRUE,
+              wrap = FALSE,
+              bordered = TRUE,
+              minRows = 15,
+              highlight = TRUE,
+              style = list(
+                #backgroundColor = "#a3bcc0",
+                #color = "#000000"     # Change the color of the content to blue
+              )
+            )
+
+          )
+
+        })
+
+      }
+
+    })
+    
+    # FOR LOCATION SEGMENT
+    observeEvent(input$open_modal_rfm_locations_table, {
+      showModal(modalDialog(
+        title = "RFM Analysis by Delivery Place",
+        easyClose = TRUE,  
+        size = "xl",
+        uiOutput("modal_location_rfm_table"),
+        footer = tagList(
+          downloadButton("download_rfm_location_df", "Download Data"),
+          modalButton("Close")
+        )
+      ))
+    })
+    
+    
+    # ZA LOCATION SEGMENT
+    #Download rfm location table
+    output$download_rfm_location_df <- downloadHandler(
+      filename = function() {
+        "myRFMdeliveryPlace.xlsx"
+      },
+      content = function(file) {
+        rfm_locations_df <- rfm_result_table_locations$rfm_locations_table
+        write.xlsx(rfm_locations_df, file)
+      }
+    )
+    
+
+    
+
+    #bar charts RFM by customers
+    output$rfm_bar_charts_customers <- renderPlotly({
+      
+      if (input$run_RFM) {
+      
+      rfm_customer_table <- rfm_result_table_customers$rfm_customers_table
+
+      rfm_customer_table$monetary_score  <- as.factor(rfm_customer_table$monetary_score)
+      
+      rfm_customer_table$frequency_score <- paste("Frequency\n Score: ", rfm_customer_table$frequency_score)
+      rfm_customer_table$recency_score <- paste("Recency\n Score: ", rfm_customer_table$recency_score)
+      
+      
+      # Panel chart koristeći ggplot2
+      gg <- ggplot(rfm_customer_table, aes(x = monetary_score)) +
+        geom_bar(stat = "count", fill = "#66CDAA") +
+        facet_grid(recency_score ~ frequency_score, scales = "free") +
+        labs(x = "Monetary Scores",   size = 12) +
+        
+        theme(strip.text.y = element_text(angle = 0, hjust = 1),
+              strip.text.x = element_text(angle = 0, hjust = 0.5),
+              axis.title.y = element_blank(),  # Remove title from  y-axis
+              axis.text.y = element_blank(),   # Remove labels  y-axis
+              axis.text.x = element_text(colour ="#a4b3b6" ),
+              axis.title.x = element_text(colour ="#a4b3b6" ),
+              axis.ticks.y = element_blank(), # Remove labels ticks y-axis
+              panel.grid.major = element_blank(),  # Remove grid lines
+              panel.grid.minor = element_blank(),   # Remove grid lines
+              panel.background = element_rect(fill = "#0f2437"),  # Change background color panel
+              plot.background = element_rect(fill = "#0f2437"),  
+              
+              #strip.background = element_rect(fill = "grey20", color = "grey80", size = 1),
+              strip.background = element_rect(fill = "#0f2437", linewidth = 1),
+              strip.text = element_text(colour = "#a4b3b6", face = "bold")
+        )
+      
+      gg
+      
+      # from ggplot to plotly object
+      p_plotly <- ggplotly(gg) %>% layout(title = list(text = 'Cross RFM Scores - Bar Charts', font = list(size = 16, 
+                                                                                                           color = '#a4b3b6')),
+                                          margin = list(l = 50,
+                                                        r = 100,
+                                                        b = 50,
+                                                        t = 80))
+      
+      }
+
+    })
+    
+    
+    #bar charts RFM by location delivery
+    output$rfm_bar_charts_locations <- renderPlotly({
+      
+      if (input$run_RFM_locations) {
+        
+        rfm_locations_df <- rfm_result_table_locations$rfm_locations_table
+        
+        rfm_locations_df$monetary_score  <- as.factor(rfm_locations_df$monetary_score)
+        
+        rfm_locations_df$frequency_score <- paste("Frequency\n Score: ", rfm_locations_df$frequency_score)
+        rfm_locations_df$recency_score <- paste("Recency\n Score: ", rfm_locations_df$recency_score)
+        
+        
+        # Panel chart koristeći ggplot2
+        gg <- ggplot(rfm_locations_df, aes(x = monetary_score)) +
+          geom_bar(stat = "count", fill = "#66CDAA") +
+          facet_grid(recency_score ~ frequency_score, scales = "free") +
+          labs(x = "Monetary Scores",   size = 12) +
+          
+          theme(strip.text.y = element_text(angle = 0, hjust = 1),
+                strip.text.x = element_text(angle = 0, hjust = 0.5),
+                axis.title.y = element_blank(),  # Remove title from  y-axis
+                axis.text.y = element_blank(),   # Remove labels  y-axis
+                axis.text.x = element_text(colour ="#a4b3b6" ),
+                axis.title.x = element_text(colour ="#a4b3b6" ),
+                axis.ticks.y = element_blank(), # Remove labels ticks y-axis
+                panel.grid.major = element_blank(),  # Remove grid lines
+                panel.grid.minor = element_blank(),   # Remove grid lines
+                panel.background = element_rect(fill = "#0f2437"),  # Change background color panel
+                plot.background = element_rect(fill = "#0f2437"),  
+                
+                #strip.background = element_rect(fill = "grey20", color = "grey80", size = 1),
+                strip.background = element_rect(fill = "#0f2437", linewidth = 1),
+                strip.text = element_text(colour = "#a4b3b6", face = "bold")
+          )
+        
+        gg
+        
+        # from ggplot to plotly object
+        p_plotly <- ggplotly(gg) %>% layout(title = list(text = 'Cross RFM Scores - Bar Charts', font = list(size = 16, 
+                                                                                                             color = '#a4b3b6')),
+                                            margin = list(l = 50,
+                                                          r = 100,
+                                                          b = 50,
+                                                          t = 80))
+        
+      }
+      
+    })
+    
+    
+    
+    
+    
+    #heat map RFM by customers
+    output$rfm_heat_map_customers <- renderPlotly({
+      
+      if (input$run_RFM) {
+        
+        rfm_customer_table <- rfm_result_table_customers$rfm_customers_table
+        
+
+        rfm_customer_table$monetary_score  <- as.factor(rfm_customer_table$monetary_score)
+        rfm_customer_table$frequency_score <- paste("Frequency\n Score: ", rfm_customer_table$frequency_score)
+        rfm_customer_table$recency_score <- paste("Recency\n Score: ", rfm_customer_table$recency_score)
+        
+       
+        data_heat_map <- rfm_customer_table %>%
+          group_by(frequency_score, recency_score) %>%
+          summarise(mean_amount = mean(amount, na.rm = TRUE))
+        
+        
+        plot <- plot_ly(
+          x = data_heat_map$frequency_score,
+          y = data_heat_map$recency_score,
+          z = data_heat_map$mean_amount,
+          type = "heatmap",
+          text = paste(# "Frequency: ", data_heat_map$frequency_score,
+                       # "<br>Recency: ", data_heat_map$recency_score,
+            
+                        "Frequency: ", substr(data_heat_map$frequency_score, nchar(data_heat_map$frequency_score), nchar(data_heat_map$frequency_score)),
+                        "<br>Recency: ", substr(data_heat_map$recency_score, nchar(data_heat_map$recency_score), nchar(data_heat_map$recency_score)),
+                       "<br>Mean Revenue: ", round(data_heat_map$mean_amount, 1)),
+  
+          
+          hoverinfo = "text",
+          colorscale = list(c(0, "#ade0cf"), c(1, "#026e49")), 
+          showscale = TRUE,
+          colorbar = list(title = list(text = "Mean Amount", font = list(size = 12, color = "#a4b3b6")),
+                          tickfont = list(size = 12, color = "#a4b3b6")
+          )
+        ) %>% layout(
+          title = list(text = 'RFM Customers - Heat Map', font = list(color = '#a4b3b6')),
+          xaxis = list(
+            title = "Frequency", 
+            titlefont = list(size = 12, color = "#a4b3b6"),
+            tickfont = list(size = 12, color = "#a4b3b6")),
+          yaxis = list(
+            title = "Recency",
+            titlefont = list(size = 12, color = "#a4b3b6"),  
+            tickfont = list(size = 12, color = "#a4b3b6"),
+            side = "left" # Poravnanje teksta na levoj strani
+          ),
+          paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+          plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+          showlegend = FALSE,  # Prikazi legendu
+          margin = list(l = 10, r = 10, t = 50, b = 10) # Podesite margine ovde
+        )
+        
+      }
+      
+    })
+    
+    
+  
+    #heat map RFM by delivery location
+    output$rfm_heat_map_locations <- renderPlotly({
+      
+      if (input$run_RFM_locations) {
+        
+        rfm_locations_df <- rfm_result_table_locations$rfm_locations_table
+        
+        
+        rfm_locations_df$monetary_score  <- as.factor(rfm_locations_df$monetary_score)
+        rfm_locations_df$frequency_score <- paste("Frequency\n Score: ", rfm_locations_df$frequency_score)
+        rfm_locations_df$recency_score <- paste("Recency\n Score: ", rfm_locations_df$recency_score)
+        
+        
+        data_heat_map <- rfm_locations_df %>%
+          group_by(frequency_score, recency_score) %>%
+          summarise(mean_amount = mean(amount, na.rm = TRUE))
+        
+        
+        plot <- plot_ly(
+          x = data_heat_map$frequency_score,
+          y = data_heat_map$recency_score,
+          z = data_heat_map$mean_amount,
+          type = "heatmap",
+          text = paste(# "Frequency: ", data_heat_map$frequency_score,
+            # "<br>Recency: ", data_heat_map$recency_score,
+            
+            "Frequency: ", substr(data_heat_map$frequency_score, nchar(data_heat_map$frequency_score), nchar(data_heat_map$frequency_score)),
+            "<br>Recency: ", substr(data_heat_map$recency_score, nchar(data_heat_map$recency_score), nchar(data_heat_map$recency_score)),
+            "<br>Mean Revenue: ", round(data_heat_map$mean_amount, 1)),
+          
+          
+          hoverinfo = "text",
+          colorscale = list(c(0, "#ade0cf"), c(1, "#026e49")), 
+          showscale = TRUE,
+          colorbar = list(title = list(text = "Mean Amount", font = list(size = 12, color = "#a4b3b6")),
+                          tickfont = list(size = 12, color = "#a4b3b6")
+          )
+        ) %>% layout(
+          title = list(text = 'RFM Customers - Heat Map', font = list(color = '#a4b3b6')),
+          xaxis = list(
+            title = "Frequency", 
+            titlefont = list(size = 12, color = "#a4b3b6"),
+            tickfont = list(size = 12, color = "#a4b3b6")),
+          yaxis = list(
+            title = "Recency",
+            titlefont = list(size = 12, color = "#a4b3b6"),  
+            tickfont = list(size = 12, color = "#a4b3b6"),
+            side = "left" # Poravnanje teksta na levoj strani
+          ),
+          paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+          plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+          showlegend = FALSE,  # Prikazi legendu
+          margin = list(l = 10, r = 10, t = 50, b = 10) # Podesite margine ovde
+        )
+        
+      }
+      
+    })
+    
+    
+    
+    
+    #rfm histogram customers
+    output$rfm_histogram_customers <- renderPlotly({
+      
+      if (input$run_RFM) {
+        
+        df_customer <- filtered_customer_data()
+        
+        data_histogram <- df_customer %>%
+          group_by(customer_id) %>% 
+          summarise(Count = n())
+        
+       #print(head(data_histogram))
+        
+        plot <- data_histogram %>%
+          plot_ly(x = ~Count, 
+                  type = 'histogram',
+                  xbins = list(size = 0.5), marker = list(color = '#04697d'),
+                  marker = list(color = '#04697d', line = list(color = 'white', width = 0.5)),
+                  hovertemplate = '%{y} Customers made %{x} Orders'
+                  
+          )%>%
+          layout( 
+            title = list(text = 'Customers by Orders', font = list(color = '#a4b3b6')),
+            xaxis = list(
+              title = "Orders", 
+              # tickmode = 'linear', 
+              tick0 = 1, 
+              dtick = 1,
+              titlefont = list(size = 12, color = "#a4b3b6"),
+              tickfont = list(size = 12, color = "#a4b3b6")),
+            yaxis = list(
+              title = "Customers",
+              titlefont = list(size = 12, color = "#a4b3b6"),  
+              tickfont = list(size = 12, color = "#a4b3b6"),
+              side = "left", # Poravnanje teksta na levoj strani
+              gridcolor = "#626b6d",
+              tickmode = 'linear',
+              dtick = 1
+            ),
+            
+            paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+            plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+            showlegend = FALSE,  # Prikazi legendu
+            margin = list(l = 10, r = 10, t = 50, b = 10) 
+            
+          )
+        
+        
+          
+        
+      }
+      
+    })
+    
+    #rfm histogram delivery location
+    output$rfm_histogram_locations <- renderPlotly({
+      
+      if (input$run_RFM_locations) {
+        
+        df_customer <- filtered_customer_data()
+        
+        data_histogram <- df_customer %>%
+          group_by(delivery_location) %>% 
+          summarise(Count = n())
+        
+        
+        
+        plot <- data_histogram %>%
+          plot_ly(x = ~Count, 
+                  type = 'histogram',
+                  xbins = list(size = 0.5), marker = list(color = '#04697d'),
+                  marker = list(color = '#04697d', line = list(color = 'white', width = 0.5)),
+                  hovertemplate = '%{y} Delivery Places made %{x} Orders '
+                  
+          )%>%
+          layout( 
+            title = list(text = 'Orders by Delivery Place', font = list(color = '#a4b3b6')),
+            xaxis = list(
+              title = "Orders", 
+              # tickmode = 'linear', 
+              tick0 = 1, 
+              dtick = 1,
+              titlefont = list(size = 12, color = "#a4b3b6"),
+              tickfont = list(size = 12, color = "#a4b3b6")),
+            yaxis = list(
+              title = "Delivery Place",
+              titlefont = list(size = 12, color = "#a4b3b6"),  
+              tickfont = list(size = 12, color = "#a4b3b6"),
+              side = "left", # Poravnanje teksta na levoj strani
+              gridcolor = "#626b6d",
+              tickmode = 'linear',
+              dtick = 1
+            ),
+            
+            paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+            plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+            showlegend = FALSE,  # Prikazi legendu
+            margin = list(l = 10, r = 10, t = 50, b = 10) 
+            
+          )
+        
+        
+        
+        
+      }
+      
+    })
+    
+    
+    
+    
+    #rfm customers scatter plot
+    output$rfm_scatter_plot_customers <- renderPlotly({
+      
+      if (input$run_RFM) {
+        
+
+        rfm_customer_table <- rfm_result_table_customers$rfm_customers_table
+        
+        
+        # sort data
+        sorted_data <- rfm_customer_table[order(rfm_customer_table$amount), ]
+        
+        
+        # Oselect data for display on x axis
+        custom_ticks <- c(sorted_data$amount[1],
+                          quantile(sorted_data$amount, c(0.25, 0.5, 0.75)), 
+                          sorted_data$amount[length(sorted_data$amount)])
+        
+        # labeling for display
+        custom_ticklabels <- c(paste("Min: ", custom_ticks[1]), 
+                               "Q1", "Median", "Q3", 
+                               paste("Max: ", custom_ticks[length(custom_ticks)]))
+        
+        
+        
+        #  scatter plot 
+        scatter_plot <- rfm_customer_table %>%
+          plot_ly(
+            x = ~amount,
+            y = ~recency_days,
+            type = 'scatter',
+            mode = 'markers',
+            marker = list(color = '#04697d'),
+            marker = list(color = '#04697d', line = list(color = 'white', width = 0.5)),
+            hovertemplate = 'Number of days since the last Order: %{y}<br>Amount: %{x} '
+          ) %>%
+          layout( 
+            title = list(text = 'Number of days since the last Order vs Amount ', font = list(color = '#a4b3b6')),
+            xaxis = list(
+              title = "Amount", 
+              #tickmode = 'linear', 
+              #tick0 = 1, 
+              #dtick = 1,
+              tickmode = 'array',
+              tickvals = custom_ticks,
+              ticktext = custom_ticklabels,
+              titlefont = list(size = 12, color = "#a4b3b6"),
+              tickfont = list(size = 12, color = "#a4b3b6")
+            ),
+            yaxis = list(
+              title = "Number of days - last Order",
+              titlefont = list(size = 12, color = "#a4b3b6"),  
+              tickfont = list(size = 12, color = "#a4b3b6")
+              #side = "left" # Poravnanje teksta na levoj strani
+            ),
+            paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+            plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+            showlegend = FALSE,  # Prikazi legendu
+            margin = list(l = 10, r = 10, t = 50, b = 10) 
+          )
+        
+        
+        
+        
+      }
+      
+    })
+    
+    
+    #rfm delevery place scatter plot
+    output$rfm_scatter_plot_locations <- renderPlotly({
+      
+      if (input$run_RFM_locations) {
+        
+        
+        #rfm_customer_table <- rfm_result_table_customers$rfm_customers_table
+        rfm_locations_df <- rfm_result_table_locations$rfm_locations_table
+        
+        
+        # sort data
+        sorted_data <- rfm_locations_df[order(rfm_locations_df$amount), ]
+        
+        
+        # Oselect data for display on x axis
+        custom_ticks <- c(sorted_data$amount[1],
+                          quantile(sorted_data$amount, c(0.25, 0.5, 0.75)), 
+                          sorted_data$amount[length(sorted_data$amount)])
+        
+        # labeling for display
+        custom_ticklabels <- c(paste("Min: ", custom_ticks[1]), 
+                               "Q1", "Median", "Q3", 
+                               paste("Max: ", custom_ticks[length(custom_ticks)]))
+        
+        
+        
+        #  scatter plot 
+        scatter_plot <- rfm_locations_df %>%
+          plot_ly(
+            x = ~amount,
+            y = ~recency_days,
+            type = 'scatter',
+            mode = 'markers',
+            marker = list(color = '#04697d'),
+            marker = list(color = '#04697d', line = list(color = 'white', width = 0.5)),
+            hovertemplate = 'Number of days since the last Order: %{y}<br>Amount: %{x} '
+          ) %>%
+          layout( 
+            title = list(text = 'Number of days since the last Order vs. Amount ', font = list(color = '#a4b3b6')),
+            xaxis = list(
+              title = "Amount", 
+              #tickmode = 'linear', 
+              #tick0 = 1, 
+              #dtick = 1,
+              tickmode = 'array',
+              tickvals = custom_ticks,
+              ticktext = custom_ticklabels,
+              titlefont = list(size = 12, color = "#a4b3b6"),
+              tickfont = list(size = 12, color = "#a4b3b6")
+            ),
+            yaxis = list(
+              title = "Number of days - last Order",
+              titlefont = list(size = 12, color = "#a4b3b6"),  
+              tickfont = list(size = 12, color = "#a4b3b6")
+              #side = "left" # Poravnanje teksta na levoj strani
+            ),
+            paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+            plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+            showlegend = FALSE,  # Prikazi legendu
+            margin = list(l = 10, r = 10, t = 50, b = 10) 
+          )
+        
+        
+        
+        
+        
+      }
+      
+    })
+    
+    
+    
+    # SALES PREDICTION LOCATION MODEL -----------------------------------------------------------------
+    
+    
+    # reactive object for sales location df
+    sales_location_model_statistics <- reactiveValues(sales_model_location_results = NULL)
+    trainDF <- reactiveValues(train_ds = NULL)
+    testDF <- reactiveValues(test_ds = NULL)
+    
+    
+    output$info_model_accurency_sales_location <- renderUI({
+      req(data_location())
+      
+      df_location <- data_location()
+      
+      splited_data <- train_test_split(df_location)
+      
+      train_dataset <- splited_data$trening_data
+      test_dataset <- splited_data$test_data
+      
+      
+      
+      model_results <- tune_lightgbm_regression(train_dataset, test_dataset)
+        
+      sales_location_model_statistics$sales_model_location_results <- model_results  #save model results in reactive object
+      trainDF$train_ds <- train_dataset #save train data in reactive object
+      testDF$test_ds <- test_dataset #save test data in reactive object
+      
+
+      tags$div(
+        #br(),
+        tags$p("Accuracy/Error of Prediction Model", style = "color: #7bc0ce; font-weight: bold; font-size: 14px"),
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        tags$p("R-squared (R²) : ", paste(round(as.numeric(model_results$rsquared), 2), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("Mean Absolute Error (MAE) : ", paste(round(as.numeric(model_results$mae), 2), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("Mean Percentage Error (MPE) : ", paste(round(as.numeric(model_results$percentage_error), 2), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        style = "font-size: 12px; color: #a4b3b6;")
+      
+    })
+    
+    
+    
+    output$performance_table <- renderUI({
+      
+      model_results <- sales_location_model_statistics$sales_model_location_results  
+      
+      performance_table <- model_results$performance_table
+      
+      
+          num_rows <- nrow(performance_table)
+          
+          table <- performance_table %>%
+            kbl(format = "html", escape = FALSE) %>% #, col.names = c("Feature", "Selected Value")
+            kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13 ) %>%
+            row_spec(1:num_rows, background = "#051524", align = "left", color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+            row_spec(0, background = "#0f2437", align = "left", color="#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+            
+            column_spec(1:2,  color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+          
+          
+          #return(table)
+          HTML(as.character(table))
+          
+
+    })
+    
+    
+    
+    
+    output$info_best_hyperpar_sales_location <- renderUI({
+
+
+      model_results <- sales_location_model_statistics$sales_model_location_results  
+      
+      
+     
+
+      tags$div(
+        br(),
+        #tags$p("Best Hyperparameters with Minimal Loss", style = "color: #7bc0ce; font-weight: bold; font-size: 14px"),
+        tags$p("Best Hyperparameters with a Minimal Loss of ", paste(round(as.numeric(model_results$best_hyperparameters[1, "min_loss"]), 3), collapse = ", "), style = "color: #7bc0ce; font-weight: bold; font-size: 14px"),
+        
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        tags$p("Learning rate : ", paste(round(as.numeric(model_results$best_hyperparameters[1, "learning_rate"]), 3), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("Number of Leaves : ", paste(round(as.numeric(model_results$best_hyperparameters[1, "num_leaves"]), 3), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("L1 regularization (LASSO) : ", paste(round(as.numeric(model_results$best_hyperparameters[1, "lambda_l1"]), 3), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("L2 regularization (Ridge) : ", paste(round(as.numeric(model_results$best_hyperparameters[1, "lambda_l2"]), 3), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("Maximum depth : ", paste(round(as.numeric(model_results$best_hyperparameters[1, "max_depth"]), 3), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$p("Number of iterations : ", paste(round(as.numeric(model_results$best_hyperparameters[1, "num_iterations"]), 3), collapse = ", "), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        
+        style = "font-size: 12px; color: #a4b3b6;")
+      
+    })
+    
+    
+    
+    
+    output$info_dataset_sales_location_model <- renderUI({
+      
+      
+      train_dataset <-  trainDF$train_ds
+      
+      
+      column_names <- names(train_dataset)
+      # without last column (last iz target label)
+      feature_names <- column_names[-length(column_names)]
+      
+      last_feature <- tail(column_names, 1)
+      
+      tags$div(
+        tags$p("Dataset Information", style = "color: #7bc0ce; font-weight: bold; font-size: 14px"),
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        
+        tags$p("Features in Model : " ,
+               tags$br(),
+               paste(feature_names, collapse = ",  " ), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+       
+        
+        tags$p("Target Label in Model : " ,
+               tags$br(),
+               paste(last_feature, collapse = ",  " ), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        
+
+      )
+      
+      
+      
+
+    })
+    
+    
+    
+    output$info_split_dataset_sales_location_model <- renderUI({
+      
+      train_dataset <-  trainDF$train_ds
+      test_dataset <- testDF$test_ds
+      
+      num_rows_train <- nrow(train_dataset)
+      num_rows_test <- nrow(test_dataset)
+      
+      tags$div(
+        tags$p("Data Splitting Information", style = "color: #7bc0ce; font-weight: bold; font-size: 14px"),
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        
+        tags$p(paste("-The algorithm used", num_rows_train, "records (80% data) for training the model."), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        tags$br(),
+        tags$p(paste("-The algorithm used", num_rows_test, "records (20% data) for testing the model."), style = "color: #a4b3b6; font-weight: bold; font-size: 13px"),
+        
+      )
+      
+    })
+    
+    
+
+  
+    output$contribution_table_sales_location_model <- renderUI({
+
+      model_results <- sales_location_model_statistics$sales_model_location_results  
+      
+      data <- model_results$total_contributions_df
+      data$Contribution <- round(data$Contribution, 3)
+
+      num_rows <- nrow(data)
+   
+      
+      table <- data %>%
+        kbl(format = "html", escape = FALSE) %>% #, col.names = c("Feature", "Selected Value")
+        kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13 ) %>%
+        row_spec(1:num_rows, background = "#051524", align = "left", color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+        row_spec(0, background = "#0f2437", align = "left", color="#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+
+        column_spec(1:2,  color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+
+
+      HTML(as.character(table))
+
+
+   })
+    
+  
+    
+    
+    output$feature_importance_sales_location_model <- renderUI({
+      
+      model_results <- sales_location_model_statistics$sales_model_location_results  
+      
+      data <- model_results$importance
+      data$Gain <- round(data$Gain, 3)
+      
+      num_rows <- nrow(data)
+      
+      
+      table <- data %>%
+        kbl(format = "html", escape = FALSE) %>% #, col.names = c("Feature", "Selected Value")
+        kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13 ) %>%
+        row_spec(1:num_rows, background = "#051524", align = "left", color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+        row_spec(0, background = "#0f2437", align = "left", color="#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+        
+        column_spec(1:2,  color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+      
+      
+      HTML(as.character(table))
+      
+      
+    })
+    
+    
+    
+    output$percent_feature_importance_sales_location_model <- renderUI({
+      
+      model_results <- sales_location_model_statistics$sales_model_location_results  
+      
+      data <- model_results$importance_percent
+      data$Gain <- round(data$Gain, 2)
+      data$Cover <- round(data$Cover, 2)
+      data$Frequency <- round(data$Frequency, 2)
+      
+      num_rows <- nrow(data)
+      
+      
+      table <- data %>%
+        kbl(format = "html", escape = FALSE) %>% #, col.names = c("Feature", "Selected Value")
+        kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13 ) %>%
+        row_spec(1:num_rows, background = "#051524", align = "left", color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+        row_spec(0, background = "#0f2437", align = "left", color="#a4b3b6", extra_css = "border: 1px solid #16525e;") %>%
+        
+        column_spec(1:2,  color = "#a4b3b6", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+      
+      
+      HTML(as.character(table))
+      
+      
+    })
+    
+    
+    
+    
+    # SALES PERFORMANCE MODEL LOCATION ------------------------------------------------------------------
+    
+
+    
+    generated_predictions_rv <- reactiveValues(predictions_rv = NULL)
+    
+    
+    observe({
+      
+      data_location <- data_location() 
+      
+      model_results <- sales_location_model_statistics$sales_model_location_results  
+      
+      #print(model_results)
+      req(!is.null(model_results), "Model results are NULL.")
+      
+      prepared_data <- prepare_data_prediction(data_location)
+      
+      
+      prediction_df<- prepared_data$prediction_data
+      identification_df <- prepared_data$identification_data
+      
+      
+      generated_predictions <- generate_predictions(prediction_df, identification_df, model_results)
+      
+      predictions_list <- generated_predictions
+
+      #saveRDS(predictions_list, "predictions_list_PROVJERA.rds")
+      
+      
+      last_date <- max(sapply(predictions_list, function(df) max(df$date)))
+      updateDateRangeInput(session, "date_range_perf_locat", start = last_date, end = last_date)
+  
+      
+      first_df <- predictions_list[[1]] #select firs df only for displaying column on UI
+      
+      updateSelectizeInput(session, "product_filter_perf_locat", choices = unique(first_df$Product), selected = unique(first_df$Product), server = TRUE)
+      updateSelectizeInput(session, "customer_filter_perf_locat", choices = unique(first_df$CustomerID), selected = unique(first_df$CustomerID), server = TRUE)
+      updateSelectizeInput(session, "region_filter_perf_locat", choices = unique(first_df$Region), selected = unique(first_df$Region), server = TRUE)
+      
+      
+      generated_predictions_rv$predictions_rv <- predictions_list # save object as reactive
+      
+      
+    })
+    
+
+  
+    
+
+    performance_loc_table <- reactiveValues(perfor_location_df = NULL)
+    
+    observeEvent(input$run_performance_location, {
+      
+
+      predictions_list <- generated_predictions_rv$predictions_rv # get object from reactive value
+     
+      
+      # Ako je odabran samo jedan datum, izvuci tabelu iz liste i uraditi agregaciju po DeliveryLocation
+      if (input$date_range_perf_locat[1] == input$date_range_perf_locat[2]) {
+        
+        selected_data <- predictions_list[[which.max(sapply(predictions_list, function(df) any(df$date == input$date_range_perf_locat[1])))]]
+        
+        
+        
+        selected_data <- selected_data %>%
+          filter(
+            Product %in% input$product_filter_perf_locat,
+            CustomerID %in% input$customer_filter_perf_locat,
+            Region %in% input$region_filter_perf_locat
+          ) %>%
+          group_by(DeliveryLocation) %>%
+          reframe(
+            date = first(date),
+            Region = first(Region),
+            Lat = first(Lat),
+            Lon = first(Lon),
+            quantity_sum = sum(quantity, na.rm = TRUE),
+            predictions_sum = round(sum(predictions, na.rm = TRUE), 0),
+            quantity_mean = mean(quantity, na.rm = TRUE),
+            predictions_mean = round(mean(predictions, na.rm = TRUE), 0),
+            lower_bound_prediction = round(quantile(predictions, (1 - 0.95) / 2), 0),
+            upper_bound_prediction = round(quantile(predictions, 1 - (1 - 0.95) / 2), 0),
+            residual_mean = round(mean(residual, na.rm = TRUE), 0),
+            residual_sum = round(sum(residual, na.rm = TRUE), 0),
+            efficiency_percentage = paste(round(mean(efficiency_percentage, na.rm = TRUE), 1), "%"),
+            efficiency_based_on_average = paste(round(mean(efficiency_based_on_average, na.rm = TRUE), 1), "%")
+          )
+        
+        
+
+      } else {
+        
+        # Filtriraj podatke iz svakog dataseta u listi na osnovu datuma predikcije, spoji datasetove i zatim uradi agregaciju prema DeliveryLocation
+        filtered_data <- predictions_list %>%
+          map(~filter(., date >= input$date_range_perf_locat[1] & date <= input$date_range_perf_locat[2])) %>%
+          bind_rows()
+        
+        #saveRDS(filtered_data, "filtered_data_PROVJERA.rds")
+        
+        
+        
+        range_dates <- paste(format(input$date_range_perf_locat[1], "%Y-%m-%d"), " - ", format(input$date_range_perf_locat[2], "%Y-%m-%d"))
+        
+        selected_data <- filtered_data %>%
+          filter(
+            Product %in% input$product_filter_perf_locat,
+            CustomerID %in% input$customer_filter_perf_locat,
+            Region %in% input$region_filter_perf_locat
+          ) %>%
+          group_by(DeliveryLocation) %>%
+          reframe(
+            date_range = range_dates,
+            Region = first(Region),
+            Lat = first(Lat),
+            Lon = first(Lon),
+            quantity_sum = sum(quantity, na.rm = TRUE),
+            predictions_sum = round(sum(predictions, na.rm = TRUE), 0),
+            quantity_mean = mean(quantity, na.rm = TRUE),
+            predictions_mean = round(mean(predictions, na.rm = TRUE), 0),
+            lower_bound_prediction = round(quantile(predictions, (1 - 0.95) / 2), 0),
+            upper_bound_prediction = round(quantile(predictions, 1 - (1 - 0.95) / 2), 0),
+            residual_mean = round(mean(residual, na.rm = TRUE), 0),
+            residual_sum = round(sum(residual, na.rm = TRUE), 0),
+            #efficiency_percentage = round(mean(efficiency_percentage, na.rm = TRUE), 2)
+            efficiency_percentage = paste(round(mean(efficiency_percentage, na.rm = TRUE), 1), "%"),
+            efficiency_based_on_average = paste(round(mean(efficiency_based_on_average, na.rm = TRUE), 1), "%")
+            
+            
+          )
+        
+
+      }
+      
+      
+      performance_loc_table$perfor_location_df <- selected_data
+      
+      
+      # Prikazi rezultate
+
+      output$performance_location_table <- renderUI({
+        
+        fluidRow(
+          reactable(
+            selected_data,
+            defaultPageSize = 15,
+            filterable = TRUE,
+            searchable = TRUE,
+            showSortable = TRUE,
+            resizable = TRUE,
+            wrap = FALSE,
+            bordered = TRUE,
+            minRows = 15,
+            highlight = TRUE,
+            style = list(
+              #backgroundColor = "#a3bcc0",
+              #color = "#000000"     # Change the color of the content to blue
+            )
+          )
+          
+        )
+        
+        
+        
+        
+      })
+      
+      
+      
+    })
+    
+    
+
+    
+    observeEvent(input$data_view_performance_location, {
+      showModal(modalDialog(
+        title = "Predictions and Performance by Delivery Location - Detailed Insight",
+        size = "xl",
+        easyClose = TRUE,
+        uiOutput("performance_location_table"),
+        footer = tagList(
+          downloadButton("download_performance_location", "Download Data"),
+          modalButton("Close")
+        )
+      ))
+    })
+    
+    
+    #Download predictions and performance by location  table
+    output$download_performance_location <- downloadHandler(
+      filename = function() {
+        "myLocationPerformance.xlsx"
+      },
+      content = function(file) {
+
+        perf_loc_selected_df <- performance_loc_table$perfor_location_df
+        
+        write.xlsx(perf_loc_selected_df, file)
+      }
+    )
+    
+    
+
+    # OVO NE RADI JER MI KLIK NA MAPU NE REAGUJE
+    
+    # Reactive data for point marking on map
+    #selected_points_data <- reactiveVal(data.frame())
+    # Store previously selected IDs
+    #previous_selected_ids <- reactiveVal(character())  
+
+    # React to clicks on the map
+    # observeEvent(input$map_click, {
+    # 
+    #   clicked_lat_lng <- input$map_click
+    # 
+    #   print(clicked_lat_lng)
+    # 
+    #   perf_loc_selected_df <- performance_loc_table$perfor_location_df
+    # 
+    #   perf_loc_selected_df$Lat <- as.numeric(perf_loc_selected_df$Lat)
+    #   perf_loc_selected_df$Lon <- as.numeric(perf_loc_selected_df$Lon)
+    # 
+    # 
+    #   selected_data <- perf_loc_selected_df %>% filter(
+    #     Lat >= clicked_lat_lng$lat - 0.01 & Lat <= clicked_lat_lng$lat + 0.01 &
+    #       Lon >= clicked_lat_lng$lng - 0.01 & Lon <= clicked_lat_lng$lng + 0.01
+    #   )
+    # 
+    #   # Provjeri je li tačka već odabrana
+    #   if (nrow(selected_data) > 0) {
+    #     selected_id <- selected_data$DeliveryLocation
+    #     if (selected_id %in% previous_selected_ids()) {
+    #       # Ako je ID već odabran, iskoči poruku s obavještenjem
+    #       showModal(modalDialog(
+    #         title = "Notification",
+    #         "That location is already selected !"
+    #       ))
+    #     } else {
+    #       # Ako nije već odabrana, dodaj je u reaktivne podatke
+    #       selected_points_data(rbind(selected_points_data(), selected_data))
+    #       previous_selected_ids(c(previous_selected_ids(), selected_id))
+    # 
+    #     }
+    #   }
+    # })
+
+
+    
+
+    output$map_performance_location <- renderLeaflet({
+      req(performance_loc_table$perfor_location_df)
+
+      perf_loc_selected_df <- performance_loc_table$perfor_location_df
+
+
+      k <- 8
+
+      leaflet(perf_loc_selected_df) %>%
+        addTiles() %>%
+        addCircleMarkers(
+          radius = 7,
+          #radius <- sqrt(abs(as.numeric(gsub("%", "", perf_loc_selected_df$efficiency_percentage)))) * k,
+          fillOpacity = 0.9,
+          #color = ifelse(data$troškovi < 0.3, "red", "green"),
+          color = ifelse(as.numeric(gsub("%", "", perf_loc_selected_df$efficiency_percentage)) < 0, "#A52A2A", "#009999"),
+          stroke = FALSE,
+          popup = ~paste0(  
+                          "<div style='background: white; background-color: white; color: #0f2437;  padding: 0px;'>",  
+                          "Location: ", Region,
+                          "<br>---------------------------------",
+                          "<br>Total Realized Quantity: ", quantity_sum, 
+                          "<br>Average Realized Quantity: ", quantity_mean, 
+                          "<br>Expected Quantity: ", predictions_mean,
+                          " (95% CI: ", lower_bound_prediction, ", ", upper_bound_prediction, ")",
+                          "<br>Efficiency Degree: ", efficiency_percentage,
+                          "</div>"
+                          ),
+          
+          group = "markers",
+          lng = ~Lon,
+          lat = ~Lat
+        )
+    })
+    
+
+
+
+    # OVO NE RADI JER MI KLIK NA MAPU NE REAGUJE
+    # output$map_performance_location_table <- renderUI({
+    #   req(selected_points_data())
+    # 
+    #   selected_points_data <- selected_points_data()
+    # 
+    #   fluidRow(
+    #     reactable(
+    #       selected_points_data,
+    #       #defaultPageSize = 15,
+    #       filterable = TRUE,
+    #       searchable = TRUE,
+    #       showSortable = TRUE,
+    #       resizable = TRUE,
+    #       wrap = FALSE,
+    #       bordered = TRUE,
+    #       #minRows = 10,
+    #       highlight = TRUE,
+    #       style = list(
+    #         #backgroundColor = "#a3bcc0",
+    #         #color = "#000000"     # Change the color of the content to blue
+    #       )
+    #     )
+    # 
+    #   )
+    # 
+    # 
+    # 
+    # 
+    # })
+    
+    
+    
+    
+    output$scatterplot_performance_location <- renderPlot({
+      
+      req(performance_loc_table$perfor_location_df)
+      
+      perf_loc_selected_df <- performance_loc_table$perfor_location_df
+      
+      
+      mean_x <- mean(perf_loc_selected_df$quantity_mean, na.rm = TRUE)
+      mean_y <- mean(perf_loc_selected_df$predictions_mean, na.rm = TRUE)
+      
+      ggplot(perf_loc_selected_df, aes(quantity_mean, predictions_mean)) +
+        labs(
+          x = "Realized Sales Volumes",
+          y = "Expected Sales Volumes"
+          #title = "Naslov Grafika"
+        ) +
+        annotate("rect", xmin = -Inf, xmax = mean_x, ymin = -Inf, ymax = mean_y, fill = alpha("#7bc0ce", 0.3)) +
+        annotate("rect", xmin = mean_x, xmax = Inf, ymin = -Inf, ymax = mean_y, fill = alpha("yellow", 0.3)) +
+        annotate("rect", xmin = -Inf, xmax = mean_x, ymin = mean_y, ymax = Inf, fill = alpha("red", 0.3)) +
+        annotate("rect", xmin = mean_x, xmax = Inf, ymin = mean_y, ymax = Inf, fill = alpha("#04697d", 0.3)) +
+        
+        geom_point() +
+        theme_classic()+
+        coord_cartesian(ylim = c(min(perf_loc_selected_df$predictions_mean), max(perf_loc_selected_df$predictions_mean)), 
+                        xlim = c(min(perf_loc_selected_df$quantity_mean), max(perf_loc_selected_df$quantity_mean)))+
+        guides(color = "none")+
+        theme(
+          panel.background = element_rect(fill = "#0f2437", color = NA),
+          plot.background = element_rect(fill = "#0f2437", color = NA),
+          axis.text = element_text(color = "white", size = 12),  
+          axis.title = element_text(color = "white", size = 12)  
+        )+
+        annotate("text", x = mean_x/2, y = mean_y/2, label = "Anotacija 1", color = "white", size = 4, alpha = 0.7) +
+        annotate("text", x = (mean_x + max(perf_loc_selected_df$quantity_mean))/2, y = mean_y/2, label = "Anotacija 2", color = "white", size = 4, alpha = 0.7) +
+        annotate("text", x = mean_x/2, y = (mean_y + max(perf_loc_selected_df$predictions_mean))/2, label = "Anotacija 3", color = "white", size = 4, alpha = 0.7) +
+        annotate("text", x = (mean_x + max(perf_loc_selected_df$quantity_mean))/2, y = (mean_y + max(perf_loc_selected_df$predictions_mean))/2, label = "Anotacija 4", color = "white", size = 4, alpha = 0.7)
+    })
+    
+    
+    # Processing brushed points
+    brushed_performance_location_data <- reactive({
+      
+      req(performance_loc_table$perfor_location_df)
+      
+      perf_loc_selected_df <- performance_loc_table$perfor_location_df
+      
+      brushedPoints(perf_loc_selected_df, input$plot_brush_performanc_loc, allRows = FALSE)
+    })
+    
+    
+    
+    
+    
+    
+    
+    selected_points_location_performans <- reactiveValues(brushed_data_perf_loc_points = NULL)
+    
+    # displaying the selected data in the table
+    output$selected_matrix_performance_location <- renderTable({
+      brushed_data <- brushed_performance_location_data()
+      
+      if (!is.null(brushed_data) && nrow(brushed_data) > 0) {
+        # check DataFrame contain column 'date'
+        if ('date' %in% colnames(brushed_data)) {
+          
+          # Ako sadrži kolonu 'date', primeni formatiranje
+          brushed_data$date <- format(as.Date(brushed_data$date), "%Y-%m-%d")
+          
+          
+        } else {
+          # Ako ne sadrži 'date', pretpostavi 'range_date'
+          brushed_data <- brushed_data
+        }
+      }
+      
+      unselected_columns <- c("Lon", "Lat")
+      brushed_data <- brushed_data %>% select(-all_of(unselected_columns))
+      
+      
+      selected_points_location_performans$brushed_data_perf_loc_points <- brushed_data
+      
+      
+      return(brushed_data)
+    })
+    
+    
+    
+    
+    
+    #Download predistions and performance by location  table
+    output$download_selected_points_performance_location <- downloadHandler(
+      filename = function() {
+        "myLocationPerformancePoints.xlsx"
+      },
+      content = function(file) {
+        
+        brushed_data <- selected_points_location_performans$brushed_data_perf_loc_points 
+
+        write.xlsx(brushed_data, file)
+      }
+    )
+    
+    
+    
+    
+    # ranking bar chart performance location 360 
+    output$bar_chart_performance_location <- renderPlotly({
+
+      req(performance_loc_table$perfor_location_df)
+
+      perf_loc_selected_df <- performance_loc_table$perfor_location_df
+
+
+      perf_loc_selected_df$efficiency_percentage <- as.numeric(gsub("%", "", perf_loc_selected_df$efficiency_percentage))
+      
+      perf_loc_selected_df$efficiency_group <- if_else(perf_loc_selected_df$efficiency_percentage < 0, "below_average", "above_average")
+      
+
+      #saveRDS(perf_loc_selected_df, "PROVJERAAAAAAAAA.rds")
+      
+      
+      perf_loc_selected_df <- perf_loc_selected_df %>% 
+        mutate(efficiency_percentage_abs = abs(efficiency_percentage)) %>%
+        arrange(efficiency_group, efficiency_percentage_abs)
+      
+      perf_loc_selected_df$DeliveryLocation <- factor(perf_loc_selected_df$DeliveryLocation, 
+                                               levels = unique(perf_loc_selected_df$DeliveryLocation))
+      
+      
+      plot_ly(data = perf_loc_selected_df[order(perf_loc_selected_df$efficiency_percentage), ],   # perf_loc_selected_df %>% arrange(efficiency_percentage), 
+              x = ~DeliveryLocation, y = ~efficiency_percentage, type = "bar", 
+              marker = list(color = if_else(perf_loc_selected_df$efficiency_group == "below_average", "#009999", "#842121")),  
+
+              text = ~efficiency_percentage
+              ) %>%
+        layout(
+          # title = list(text = " ", 
+          #              x = 0.5),
+          xaxis = list(title = "Delivery Location",  
+                       titlefont = list(size = 12, color = "#a4b3b6"),
+                       tickfont = list(size = 12, color = "#a4b3b6")),
+          yaxis = list(title = "Efficiency Degree %",
+                       titlefont = list(size = 12, color = "#a4b3b6"),  
+                       tickfont = list(size = 12, color = "#a4b3b6")),
+          paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+          plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+          showlegend = FALSE,  # Prikazi legendu
+          
+          barmode = "stack"
+          #margin = list(l = 10, r = 10, t = 50, b = 10) # Podesite margine ovde
+          
+        )
+
+
+    })
+    
+    
+    
+    
+    
+    # ranking bar chart performance location Without AI 
+    output$bar_chart_performance_location_without_AI <- renderPlotly({
+      
+      req(performance_loc_table$perfor_location_df)
+      
+      perf_loc_selected_df <- performance_loc_table$perfor_location_df
+      
+      #perf_loc_selected_df$efficiency_percentage <- NULL
+      
+      
+      # # calculate quantity_mean
+      # mean_quantity_mean <- mean(perf_loc_selected_df$quantity_mean, rm.na = TRUE)
+      # 
+      # perf_loc_selected_df <- perf_loc_selected_df %>% 
+      #   mutate(efficiency_percentage = round((quantity_mean - mean_quantity_mean) / quantity_mean * 100), 1) 
+      
+      perf_loc_selected_df$efficiency_based_on_average <- as.numeric(gsub("%", "", perf_loc_selected_df$efficiency_based_on_average))
+      
+
+      perf_loc_selected_df$efficiency_group <- if_else(perf_loc_selected_df$efficiency_based_on_average >= 0, "above_average", "below_average")
+
+      #saveRDS(perf_loc_selected_df, "PROVJERAAAAAAAAA.rds")
+      
+      
+      perf_loc_selected_df <- perf_loc_selected_df %>% 
+        mutate(efficiency_percentage_abs = abs(efficiency_based_on_average)) %>%
+        arrange(efficiency_group, efficiency_percentage_abs)
+      
+      perf_loc_selected_df$DeliveryLocation <- factor(perf_loc_selected_df$DeliveryLocation, 
+                                                      levels = unique(perf_loc_selected_df$DeliveryLocation))
+      
+      
+      plot_ly(data = perf_loc_selected_df[order(perf_loc_selected_df$efficiency_based_on_average), ],  
+              x = ~DeliveryLocation, y = ~efficiency_based_on_average, type = "bar", 
+              marker = list(color = if_else(perf_loc_selected_df$efficiency_group == "below_average", "#009999", "#842121")),   
+              text = ~efficiency_based_on_average       
+      ) %>%
+        layout(
+          # title = list(text = " ", 
+          #              x = 0.5),
+          xaxis = list(title = "Delivery Location",  
+                       titlefont = list(size = 12, color = "#a4b3b6"),
+                       tickfont = list(size = 12, color = "#a4b3b6")),
+          yaxis = list(title = "Efficiency Degree %",
+                       titlefont = list(size = 12, color = "#a4b3b6"),  
+                       tickfont = list(size = 12, color = "#a4b3b6")),
+          paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+          plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+          showlegend = FALSE,  # Prikazi legendu
+          
+          barmode = "stack"
+          #margin = list(l = 10, r = 10, t = 50, b = 10) # Podesite margine ovde
+          
+        )
+      
+      
+    })
+    
+    
+    
+    
+    
+    
+    
+    # PREDICTIVE SCENARIOS SALES LOCATION  -------------------------------------------------------------------------------------------------------
+    
+    
+    
+    influental_result_locatons_df <- reactiveValues(selected_values = NULL)
+    selected_scenario_columns <- reactiveValues(selected_cols = NULL)
+    
+    
+    output$selected_values_table_performance_location <- renderUI({
+
+
+      data_location <- data_location()
+      prepared_data <- prepare_data_prediction(data_location)
+
+      # get model results from reactive object
+      model_results <- sales_location_model_statistics$sales_model_location_results
+
+
+      # Select and prepare data for prescriptiv segment in machinely app
+      get_variable_importance <- as.data.frame(model_results$importance)
+
+      get_variable_importance <- get_variable_importance[, c("Feature", "Gain")]
+      get_variable_importance <- get_variable_importance %>% rename(Importance = Gain)
+
+
+      # Sortiranje po opadajućem redoslijedu Importance vrijednosti
+      sorted_importance <- get_variable_importance[order(-get_variable_importance$Importance), ]
+
+      # top 10 Importance vrijednosti
+      top_10_importance <- head(sorted_importance, n = 10)
+
+      prepared_data <- prepared_data$prediction_data
+
+      # Izdvajanje kolona koje se podudaraju sa nazivima u Importance Feature
+      filter_columns <- intersect(names(prepared_data), top_10_importance$Feature)
+
+
+      reactive_data_value <- prepared_data[, filter_columns]
+
+      
+      selected_scenario_columns$selected_cols <- reactive_data_value
+      
+      
+      #str(reactive_data_value)
+      
+      tryCatch({
+        # Vaš postojeći kod
+        
+        if (!is.null(reactive_data_value)) {
+          selected_values <- sapply(colnames(reactive_data_value), function(col) {
+            input_id <- paste0("input_", col)
+            input_value <- input[[input_id]]
+            input_value
+          })
+          
+          #cat("SELECTED:", str(selected_values))
+          
+          data_from_UI <- data.frame(
+            Varijabla = colnames(reactive_data_value),
+            Vrijednost = selected_values
+          )
+          
+          
+          rownames(data_from_UI) <- NULL
+          
+          # Spremanje rezultata u reactiveValues objekt
+          influental_result_locatons_df$selected_values <- data_from_UI
+          
+          
+          
+          num_rows <- nrow(data_from_UI)
+          
+          table <- data_from_UI %>%
+            kbl(format = "html", escape = FALSE, col.names = c("Feature", "Selected Value")) %>%
+            kable_styling(bootstrap_options = c( "hover","responsive","condensed"), full_width = FALSE, font_size = 13) %>%
+            row_spec(1:num_rows, background = "#051524", align = "center", color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+            row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+            
+            column_spec(1:2,  color = "#7bc0ce", extra_css = "border: 1px solid #16525e;") #border_left = TRUE, border_right = TRUE,
+          
+          
+          #return(table)
+          HTML(as.character(table))
+        }
+        
+        
+      }, error = function(e) {
+        
+        cat("Error:", conditionMessage(e), "\n")
+        
+      })
+      
+
+    })
+    
+    
+    
+    
+    
+    
+ 
+    reactive_scenario_predict_location <- reactiveValues(scenario_prediction = NULL)
+    
+    # Expected result output
+    output$expected_results_performance_location <- renderUI({
+
+      # user selected values (df) za predikciju tj. simulaciju
+      influent_df<- influental_result_locatons_df$selected_values
+      data_location <- data_location()
+      prepared_data <- prepare_data_prediction(data_location)
+
+      prepared_data <- prepared_data$prediction_data
+      prepared_data <- prepared_data[, !names(prepared_data) %in% "quantity", drop = FALSE] 
+      
+
+      # get model results from reactive object
+      model_results <- sales_location_model_statistics$sales_model_location_results
+      model <- model_results$best_model
+
+     
+
+      if (!is.null(influent_df)) {
+
+        #rownames(influent_df) <- NULL
+        influent_df <- spread(influent_df, key = Varijabla, value = Vrijednost)
+
+        # match columns name
+        selected_columns_train_df <- prepared_data %>% select(all_of(names(influent_df)))
+
+        #change data type in influent_df based on selected_columns_train_df
+        processed_influent_df <- map_data_types_from_UI(selected_columns_train_df, influent_df)
+
+        first_row_train_df <- prepared_data[1, ]
+
+        # Update traning_df based on sliser DF
+        cols_to_update_train_df <- intersect(names(first_row_train_df), names(processed_influent_df))
+        first_row_train_df[cols_to_update_train_df] <- processed_influent_df[cols_to_update_train_df]
+
+
+        prescript_prediction <- generate_predictions_prescript(model, first_row_train_df)
+
+
+        reg_predicted_values <- prescript_prediction$predictions_df$pred_data$Predicted
+        
+        reg_predicted_values <- data.frame(reg_predicted_values)
+        
+        
+        reg_predicted_values <- reg_predicted_values %>%
+            rename("Predicted Value" = "reg_predicted_values")
+        
+
+        reg_predicted_values["Predicted Value"] <- round(reg_predicted_values["Predicted Value"], 0)
+
+        
+        # catch reactiv predicted value
+        reactive_scenario_predict_location$scenario_prediction <- reg_predicted_values
+
+        
+        num_rows <- nrow(reg_predicted_values)
+        num_col<-ncol(reg_predicted_values)
+
+        table <- reg_predicted_values %>%
+          kbl(format = "html", escape = FALSE) %>%  #col.names = c("Predicted Value")
+          kable_styling(bootstrap_options = c( "strike", "hover","responsive", "condensed"), full_width = FALSE, font_size = 13) %>%
+          row_spec(1, background = "#051524", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+          row_spec(0, background = "#0f2437", align = "center", color="#7bc0ce", extra_css = "border: 1px solid #16525e;") %>%
+
+          column_spec(1, color = "#66CDAA",  extra_css = "border: 1px solid #16525e;")
+
+
+        HTML(as.character(table))
+
+      }
+    })
+    
+    
+    
+    
+    output$predicted_prescript_value_location_perform <- renderPlotly({
+
+
+      #predicted_values_array <- tree_data()$predictions$predictions_df$Train$Predicted
+      predictions_list <- generated_predictions_rv$predictions_rv # get object from reactive value
+
+      # select last prediction - last date
+      latest_date <- max(sapply(predictions_list, function(df) max(df$date)))
+      last_date_predictions <- predictions_list[[which.max(sapply(predictions_list, function(df) any(df$date == latest_date)))]]
+      
+      predicted_values_array <- last_date_predictions$predictions # select column with predictions
+      
+      
+      reg_predicted_values <- reactive_scenario_predict_location$scenario_prediction  #predicted values with selected scenario
+
+      
+      value <- reg_predicted_values$`Predicted Value`
+      
+      min_value <-min(round(as.numeric(predicted_values_array),0))
+      max_value <- max(round(as.numeric(predicted_values_array),0))
+
+
+      plot_ly(
+        x = c(min_value, value),
+        y = c(1, 1),
+        type = "scatter",
+        mode = "lines+text",
+        line = list(width = 80),  # Povećajte debljinu linije
+        width = 180,  # Širina grafikona
+        height = 100  # Visina grafikona
+      ) %>% layout(
+        title = list(
+          text = "Predicted Value",
+          font = list(size = 12, color = "#a4b3b6")
+        ),
+        xaxis = list(range = c(min_value, max_value), showgrid = FALSE, titlefont = list(size = 12, color = "#a4b3b6"),
+                     tickfont = list(size = 11, color = "#a4b3b6"), title = "", linecolor = "#a4b3b6"),
+        yaxis = list(showticklabels = FALSE, showgrid = FALSE, linecolor = "#a4b3b6"),
+        showlegend = FALSE,
+        paper_bgcolor = "#0f2437",
+        plot_bgcolor = "#0f2437",
+        margin = list(l = 1, r = 4, t = 50, b = 10)
+
+      ) %>%
+        # add_annotations(
+        #   x = 0.05,
+        #   y = 1,
+        #   text =as.character(value),
+        #   xanchor = "left",
+        #   showarrow = FALSE,
+        #   font = list(color = "#0f2437")
+        # )   %>%
+        add_trace(
+          type = "scatter",
+          fill = "toself",
+          fillcolor = "#66CDAA",
+          line = list(color = "#66CDAA"),
+          showlegend = FALSE,
+          hoverinfo = "text"
+        )
+
+
+    })
+    
+    
+    
+    
+    output$prescriptiv_plot_UI_performance_location <- renderUI({
+
+      div(
+        br(),
+        tags$hr(style="border-color: #009999; margin-top: 3px;"),
+        plotlyOutput("predicted_prescript_value_location_perform"),
+        helpText(paste("You are working on a predictive scenario for quantity" ))
+        )
+
+    })
+    
+    
+    
+    # WORKING ON IT
+    
+    # #cache data for prescriptive
+    observeEvent(input$input_generators_performance_location, {
+      
+      updated_data <- selected_scenario_columns$selected_cols
+      
+      for (col in colnames(updated_data)) {
+        
+        input_id <- paste0("input_", col)
+        input_value <- input[[input_id]]
+        updated_data[, col] <- input_value
+        
+        
+      }
+    })
+    
+    
+    
+    
+    
+    output$input_generators_performance_location <- renderUI({
+      
+      updated_data <- selected_scenario_columns$selected_cols
+      
+      
+      input_list <- lapply(colnames(updated_data), function(col) {
+        col_type <- class(updated_data[[col]])
+        if (col_type %in% c("numeric", "integer")) {
+          col_range <- range(updated_data[[col]], na.rm = TRUE)
+          differences <- diff(updated_data[[col]])
+          min_difference <- min(abs(differences))
+          step <- min_difference
+          
+          knobInput(
+            inputId = paste0("input_", col),
+            label = col,
+            min = col_range[1],
+            max = col_range[2],
+            value = round(mean(col_range), 0),
+            step = step,
+            width = "100px",
+            fgColor = "#0a5f70",  #"#7bc0ce",
+            inputColor = "white",
+            bgColor = "#a4b3b6",
+            fontSize = "13px",
+            lineCap = "round"
+          )
+        } else if (col_type == "factor") {
+          unique_levels <- levels(updated_data[[col]])
+          selectInput(
+            inputId = paste0("input_", col),
+            #label = paste("Vrijednost za", col),
+            label = col,
+            choices = unique_levels
+            #selectize = FALSE,
+          )
+          
+        }
+      })
+      
+      
+
+      # podeđavanje prikaza na osnovu broja izabranih značajkih
+      max_outputs_first_column <- 3 
+      input_list_first_column <- input_list[1:max_outputs_first_column]   
+      input_list_second_column <- input_list[(max_outputs_first_column + 1):length(input_list)] # postavio 0, bilo 1
+      
+      column1 <- column(width = 6, align = "center", style = "border: 1px solid #16525e; border-radius: 5px;", do.call(tagList, input_list_first_column))
+      column2 <- column(width = 6, align = "center", style = "border: 1px solid #16525e; border-radius: 5px;", do.call(tagList, input_list_second_column))
+      
+      fluidRow(column1, column2)
+    })
+    
+    
+    
+    
+    
+  
+})
+
+
+
+
+
+

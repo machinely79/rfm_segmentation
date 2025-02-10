@@ -1,0 +1,45 @@
+/* ----------------nav bar menu ------------------*/
+.navbar.navbar-default {
+    background-color: #b2aee314 !important;
+}
+
+.navbar-brand {
+    color: #009899;
+}
+
+
+/* ---------------- reactable ------------------*/
+.reactable th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* --------------- navbar ------------------------- */
+.navbar {
+  position: fixed;
+  width: 100%;
+  top: 0;
+  z-index: 9999;
+}
+
+.navbar ~ .container-fluid {
+  padding-top: 70px;
+}
+
+.dropdown-toggle {
+ padding-right: 2.0rem;
+ padding-left: 2.0rem;
+  
+}
+
+.panel-scroll-vertical {
+  overflow-y: auto; 
+  max-height: 100%; 
+}
+
+
+
+
+

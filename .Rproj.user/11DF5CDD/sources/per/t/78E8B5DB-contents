@@ -1,0 +1,70 @@
+#install.packages("farver") # trebalo mi za ggplot jer mi je pravio problem
+#remotes::install_github("timelyportfolio/dataui") instalacija dataui paketa kojeg nema na CRAN
+#install.packages("lightgbm", repos = "https://cran.r-project.org")
+
+
+
+library(leaflet)
+library(purrr)  
+library(lightgbm)
+library(dataui)
+library(rfm)
+library(ggplot2)
+library(reactablefmtr)
+#library(tidyverse)
+library(arules)
+library(readxl)
+library(stringi)
+#library(datamods)
+#library(DT)
+library(shinythemes)
+library(plotly)
+#library(htmlwidgets)
+#library(IRdisplay)
+library(shinyjs)
+#library(bslib) 
+library(reactable)
+library(shiny)
+library(dplyr)
+#library(flexdashboard)
+library(tidyr)
+#library(sparkline)
+library(lubridate)
+#library(tibble)
+#library(shinyglide) 
+library(dataPreparation)
+library(shinycssloaders)
+#library(RColorBrewer)
+library(data.table)
+library(shinyWidgets)
+library(caret)
+library(xtable)
+library(kableExtra)
+library(openxlsx)
+
+options(scipen = 999)
+
+# Options for reactable
+
+options(reactable.theme = reactableTheme(
+  color = "hsl(233, 9%, 87%)",
+  backgroundColor ="#051524",    #"hsl(233, 9%, 19%)",
+  borderColor =  "hsl(233, 9%, 22%)",
+  stripedColor = "#051524",     #"hsl(233, 12%, 22%)",
+  highlightColor =  "#1b3041", "hsl(233, 12%, 24%)",
+  inputStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
+  selectStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
+  pageButtonHoverStyle = list(backgroundColor = "hsl(233, 9%, 25%)"),
+  pageButtonActiveStyle = list(backgroundColor = "hsl(233, 9%, 28%)")
+
+))
+
+# Options for Spinner
+options(spinner.color="#66CDAA", spinner.color.background="#0f2437", spinner.size=2)
+
+#options(shiny.maxRequestSize = 10 * 1024^2)
+
+ui <- source("ui.R")$value
+server <- source("server.R")$value
+
+shinyApp(ui = ui, server = server)

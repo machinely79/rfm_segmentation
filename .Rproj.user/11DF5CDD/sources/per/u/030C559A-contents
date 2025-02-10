@@ -1,0 +1,89 @@
+# Install and load necessary libraries
+library(plotly)
+
+# Data Prep
+data("mtcars")
+mtcars$`car name` <- rownames(mtcars)
+mtcars$mpg_z <- round((mtcars$mpg - mean(mtcars$mpg))/sd(mtcars$mpg), 2)
+mtcars$mpg_type <- ifelse(mtcars$mpg_z < 0, "below", "above")
+mtcars <- mtcars[order(mtcars$mpg_z), ]
+mtcars$`car name` <- factor(mtcars$`car name`, levels = mtcars$`car name`)
+
+
+
+# Create Diverging Barchart with Plotly
+plot_ly(data = mtcars, x = ~`car name`, y = ~mpg_z, type = "bar",
+        marker = list(color = ifelse(mtcars$mpg_type == "above", "#009999", "#A52A2A")),
+        text = ~mpg_z) %>%
+  layout(
+       # title = list(text = "Diverging Bars",
+       #              subtitle = "Normalized mileage from 'mtcars'",
+       #              x = 0.5),
+       xaxis = list(title = "Delivery Location",
+                    titlefont = list(size = 12, color = "#a4b3b6"),
+                    tickfont = list(size = 12, color = "#a4b3b6")),
+       yaxis = list(title = "Efficiency Degree %",
+                    titlefont = list(size = 12, color = "#a4b3b6"),
+                    tickfont = list(size = 12, color = "#a4b3b6")),
+       paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+       plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+       showlegend = FALSE,  # Prikazi legendu
+
+       barmode = "stack"
+       #margin = list(l = 10, r = 10, t = 50, b = 10) # Podesite margine ovde
+
+       )
+
+
+
+mean_quantity_mean <- mean(PROVJERAAAAAAA$quantity_mean, rm.na = TRUE)
+
+
+PROVJERAAAAAAA <- PROVJERAAAAAAA %>% 
+  mutate(efficiency_percentage_test = (quantity_mean - mean_quantity_mean) / quantity_mean * 100) 
+
+
+PROVJERAAAAAAA$efficiency_percentage <- NULL
+
+
+# Dodavanje nove kolone na osnovu zadate relacije
+PROVJERAAAAAAA <- PROVJERAAAAAAA %>% 
+  mutate(efficiency_percentage_test_scale = scale((quantity_mean - mean_quantity_mean) / quantity_mean) * 100)
+
+
+
+# Dodavanje nove kolone na osnovu zadate relacije
+
+
+
+#################################
+PROVJERAAAAAAA <- PROVJERAAAAAAA %>% 
+  mutate(efficiency_percentage_abs = abs(efficiency_percentage)) %>%
+  arrange(efficiency_group, efficiency_percentage_abs)
+
+
+PROVJERAAAAAAA$DeliveryLocation <- factor(PROVJERAAAAAAA$DeliveryLocation, 
+                                          levels = unique(PROVJERAAAAAAA$DeliveryLocation))
+
+PROVJERAAAAAAA$DeliveryLocation <- arrange(desc(DeliveryLocation))
+
+plot_ly(data = PROVJERAAAAAAA %>% arrange(desc(efficiency_percentage)) , 
+        x = ~DeliveryLocation, y = ~efficiency_percentage, type = "bar", 
+        marker = list(color = ifelse(PROVJERAAAAAAA$efficiency_group == "above", "#009999", "#A52A2A")),   
+        text = ~efficiency_percentage) %>%
+  layout(
+    # title = list(text = " ", 
+    #              x = 0.5),
+    xaxis = list(title = "Delivery Location",  
+                 titlefont = list(size = 12, color = "#a4b3b6"),
+                 tickfont = list(size = 12, color = "#a4b3b6")),
+    yaxis = list(title = "Efficiency Degree %",
+                 titlefont = list(size = 12, color = "#a4b3b6"),  
+                 tickfont = list(size = 12, color = "#a4b3b6")),
+    paper_bgcolor = "#0f2437",  # Transparentna boja pozadine papira
+    plot_bgcolor = "#0f2437",   # Transparentna boja pozadine grafikona
+    showlegend = FALSE,  # Prikazi legendu
+    barmode = "stack")
+
+
+PROVJERAAAAAAAAA_2 <- readRDS("PROVJERAAAAAAAAA.rds")

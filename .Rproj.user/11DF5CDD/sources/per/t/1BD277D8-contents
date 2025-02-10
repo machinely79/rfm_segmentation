@@ -1,0 +1,525 @@
+
+
+# 1. verzija sa one hot encodeing ---------------------------------------------
+
+# train_test_split <- function(data) {
+#   
+#   # from char to factor
+#   data <- as.data.frame(data)
+#   char_vars <- sapply(data, is.character)
+#   data[char_vars] <- lapply(data[char_vars], as.factor)
+#   
+#   set.seed(123)
+#   
+#   # prepare for stratification by Product and delevery place
+#   stratification_attribute_1 <- data$DeliveryLocation 
+#   stratification_attribute_2 <- data$Product 
+#   stratification_attributes <- paste(stratification_attribute_1, stratification_attribute_2, sep = "_")
+#   
+#   # get index for partitation dataset
+#   index <- createDataPartition(stratification_attributes, p = 0.8, list = FALSE)
+#   
+#   # get column index for Product
+#   index_attribute <- which(names(data) == "Product")
+#   
+#   # select attribute from Product column to the end of the column
+#   trening <- data[index, index_attribute : ncol(data)]
+#   test <- data[-index, index_attribute : ncol(data)]
+#   
+#   # select factor columns
+#   factor_columns <- sapply(trening, is.factor)
+#   
+#   # create one-hot encoder train and test data
+#   trening_encode <- one_hot_encoder(data = trening[, factor_columns])
+#   test_encode <- one_hot_encoder(data = test[, factor_columns])
+#   
+#   # Identify the columns that exist only in trening_encode / test_encode
+#   trening_encode_columns <- setdiff(names(trening_encode), names(trening))
+#   test_encode_columns <- setdiff(names(test_encode), names(test))
+#   
+#   # merge datasets
+#   merged_trening <-as.data.frame(bind_cols(trening_encode[, ..trening_encode_columns], trening)) 
+#   merged_test <- as.data.frame(bind_cols(test_encode[, ..test_encode_columns], test)) 
+#   
+#   trening_data <- merged_trening %>% select(-names(factor_columns[factor_columns]))
+#   test_data <- merged_test %>% select(-names(factor_columns[factor_columns]))
+#   
+#   
+#   
+#   return(list(trening_data = trening_data, 
+#               test_data = test_data))
+#   
+# }
+
+
+
+#####   solucija sa zadržavanjem rijetkih slučajeva u treningu - NEDOVORŠENO ---------------------------------
+# train_test_split <- function(data) {
+#   # from char to factor
+#   data <- as.data.frame(data)
+#   char_vars <- sapply(data, is.character)
+#   data[char_vars] <- lapply(data[char_vars], as.factor)
+#   
+#   set.seed(123)
+#   
+#   # prepare for stratification by Product and delivery place
+#   stratification_attribute_1 <- data$Category 
+#   stratification_attribute_2 <- data$Status 
+#   stratification_attributes <- paste(stratification_attribute_1, stratification_attribute_2, sep = "_")
+#   
+#   # get index for partitioning dataset
+#   index <- createDataPartition(stratification_attributes, p = 0.2, list = FALSE)
+#   
+#   # get column index for Product
+#   index_attribute <- which(names(data) == "Status")
+#   
+#   # select trening/test data and attribute from Product column to the end of the column
+#   trening_data <- data[index, index_attribute : ncol(data)]
+#   test_data <- data[-index, index_attribute : ncol(data)]
+#   
+#   factor_columns <- sapply(trening_data, is.factor)
+#   factor_columns_df <- names(trening_data[, factor_columns])
+#   
+#   
+#   rezultati <- list()
+#   
+#   for (kolona in factor_columns_df) {
+#     rezultat <- data %>%
+#       group_by(across(all_of(kolona))) %>%
+#       filter(n() == 1) %>%
+#       ungroup()
+#     
+#     rezultati[[kolona]] <- rezultat
+#   }
+#   
+#   krajnji_rezultat <- bind_rows(rezultati)
+#   krajnji_rezultat <- distinct(krajnji_rezultat)
+#   
+#   trening_data <- bind_rows(trening_data, krajnji_rezultat[, index_attribute : ncol(data)])
+#   trening_data <- distinct(trening_data)
+#   
+#   # DODATI JOŠ DA SE IZ TEST SETA IZUZMU SLUČAJEVI KOJI SU PREBAČENI U TRENING SET-ZBOG DUPLIRANJA
+#   #test_data <- semi_join(test_data, trening_data, by = factor_columns_df)
+#   
+#   return(list(trening_data = krajnji_rezultat, 
+#               test_data = test_data))
+# }
+
+
+
+
+
+
+
+# 2. verzija, bez one-hot encodeing
+train_test_split <- function(data) {
+  
+  # from char to factor
+  data <- as.data.frame(data)
+  char_vars <- sapply(data, is.character)
+  data[char_vars] <- lapply(data[char_vars], as.factor)
+  
+  set.seed(123)
+  
+  # prepare for stratification by Product and delevery place
+  stratification_attribute_1 <- data$DeliveryLocation 
+  stratification_attribute_2 <- data$Product 
+  stratification_attributes <- paste(stratification_attribute_1, stratification_attribute_2, sep = "_")
+  
+  # get index for partitation dataset
+  index <- createDataPartition(stratification_attributes, p = 0.8, list = FALSE)
+  
+  # get column index for Product
+  index_attribute <- which(names(data) == "Product")
+  
+  # select trening/test data and attribute from Product column to the end of the column
+  trening_data <- data[index, index_attribute : ncol(data)]
+  test_data <- data[-index, index_attribute : ncol(data)]
+  
+  
+  return(list(trening_data = trening_data, 
+              test_data = test_data))
+  
+  
+}
+
+
+
+
+# run algorithm with search hyperparameters
+tune_lightgbm_regression <- function(train_data, test_data) {
+  
+  train_data$quantity <- as.numeric(train_data$quantity)
+  test_data$quantity <- as.numeric(test_data$quantity)
+  
+  
+  # Provjeri ima li snimljenog modela i koliko je prošlo od zadnjeg pretraživanja
+  last_model_file <- "./ml_models/last_model.rds"
+  last_model_time <- Sys.time() - as.difftime(1440, units = "mins")  # 24h
+  
+  if (file.exists(last_model_file)) {
+    last_model_time <- file.info(last_model_file)$mtime
+  }
+  
+  # Ako je prošlo manje od X dana, koristi snimljeni model
+  
+  if (Sys.time() - last_model_time < as.difftime(1440, units = "mins")) {  # 24h
+    print("The old model is used!")
+    loaded_model <- readRDS(last_model_file)
+    return(list(
+      best_model = loaded_model$best_model, 
+      performance_table = loaded_model$performance_table, 
+      importance_percent = loaded_model$importance_percent, 
+      importance = loaded_model$importance,
+      best_hyperparameters = loaded_model$best_hyperparameters,
+      rsquared = loaded_model$rsquared,
+      mae = loaded_model$mae,
+      percentage_error = loaded_model$percentage_error,
+      total_contributions_df = loaded_model$total_contributions_df
+      
+    ))
+    
+    
+  }
+  else {
+    
+    print("A new model is being trained!")
+    categorical_features <- names(train_data)[sapply(train_data, is.factor)]
+    last_column <- ncol(train_data)
+    
+    # Convert data to LightGBM format
+    dtrain <- lgb.Dataset(
+      data = data.matrix(train_data[, -last_column, drop = FALSE]),  # Exclude the last column (label)
+      label = train_data[, last_column],
+      categorical_feature = which(names(train_data) %in% categorical_features)
+    )
+    
+    dtest <- lgb.Dataset.create.valid(
+      dataset = dtrain, 
+      data = data.matrix(test_data[, -last_column, drop = FALSE]),  # Exclude the last column (label)
+      label = test_data[, last_column]
+      
+    )
+    
+    
+    # Set up hyperparameter grid
+    hyperparameter_grid <- expand.grid(
+      learning_rate = c(0.01, 0.05, 0.1),
+      num_leaves = c(5, 10, 15),
+      lambda_l1 = c(0, 1, 5),
+      lambda_l2 = c(0, 1, 5),
+      max_depth = 2:8
+    )
+    
+    # Initialize a list to store models
+    models <- list()
+    
+    # Initialize a data frame to store performance metrics
+    perf_df <- data.frame(matrix(ncol = 7, nrow = nrow(hyperparameter_grid)))
+    colnames(perf_df) <- c("learning_rate", "num_leaves", "lambda_l1", 
+                           "lambda_l2", "max_depth", "min_loss", "num_iterations")
+    
+    # Iterate through hyperparameter combinations
+    for (i in 1:nrow(hyperparameter_grid)) {
+      params <- list(
+        objective = "regression",
+        metric = "l2",
+        learning_rate = hyperparameter_grid$learning_rate[i],
+        num_leaves = hyperparameter_grid$num_leaves[i],
+        lambda_l1 = hyperparameter_grid$lambda_l1[i],
+        lambda_l2 = hyperparameter_grid$lambda_l2[i],
+        max_depth = hyperparameter_grid$max_depth[i]
+      )
+      
+      # Train LightGBM model
+      model <- lgb.train(
+        params = params,
+        data = dtrain,
+        valids = list(test = dtest),
+        nrounds = 100,  # Adjust as needed
+        early_stopping_rounds = 5,
+        verbose = 0
+      )
+      
+      
+      # Store the model
+      models[[i]] <- model
+      
+      # Store the performance metrics
+      min_loss <- min(rbindlist(model$record_evals$test$l2))
+      num_iterations <- model$best_iter
+      
+      perf_df[i, ] <- c(
+        params$learning_rate,
+        params$num_leaves,
+        params$lambda_l1,
+        params$lambda_l2,
+        params$max_depth,
+        min_loss,
+        num_iterations
+      )
+    }
+    
+    # Identify the best model based on performance
+    best_model <- models[[which.min(perf_df$min_loss)]]
+    
+    # get best hyperparameters
+    best_hyperparameters <- perf_df[which.min(perf_df$min_loss), ]
+    
+    
+    # Make predictions on the test data
+    predictions <- predict(best_model, newdata = data.matrix(test_data[, -last_column, drop = FALSE]))
+    
+    ####### !!!!!! ZA TESTIRANJE CODE-A
+    #result_df_proba <- cbind(test_data, Predictions = predictions)
+    #saveRDS(result_df_proba, "result_df_proba_PROVJERA.rds")
+
+    
+    # Calculate R-squared
+    rsquared <- cor(predictions, test_data[, last_column])^2
+    
+    # Calculate MAE
+    mae <- mean(abs(predictions - test_data[, last_column]))
+    
+    # Calculate percentage error
+    percentage_error <- mean(abs((test_data[, last_column] - predictions) / test_data[, last_column])) * 100
+    
+    # Calculate feature importance
+    importance_percent  <- lgb.importance(best_model, percentage = TRUE)
+    importance <- lgb.importance(best_model, percentage = FALSE)
+    
+    
+    # Calculate influence coefficients
+    num_features <- ncol(test_data[, -last_column])
+    tree_interpretation <- lgb.interprete(best_model, data.matrix(test_data[, -last_column]), 1L:num_features)
+    
+    
+    # calculate total contributions -------------------------------------------------------------------------
+    total_contributions_df <- data.frame(Feature = character(), Contribution = numeric(), stringsAsFactors = FALSE)
+    
+    # Prolazi kroz svaki element u listi
+    for (tree_interpretation in tree_interpretation) {          #MODEL[["tree_interpretation"]]
+      # Prolazi kroz svaki red unutar elementa
+      for (i in 1:nrow(tree_interpretation)) {
+        feature <- tree_interpretation[i, "Feature"]
+        contribution <- tree_interpretation[i, "Contribution"]
+        
+        # Proveri da li značajka već postoji u data frame-u
+        index <- match(feature, total_contributions_df$Feature)
+        
+        # Ako značajka već postoji, ažuriraj doprinos
+        if (!is.na(index)) {
+          total_contributions_df$Contribution[index] <- total_contributions_df$Contribution[index] + contribution
+        } else {
+          # Ako značajka ne postoji, dodaj novi red
+          total_contributions_df <- rbind(total_contributions_df, data.frame(Feature = feature, Contribution = contribution))
+          
+        }
+      }
+    }
+    
+    total_contributions_df$Contribution <- round(as.numeric(total_contributions_df$Contribution), 4)
+    #----------------------------------------------------------------------------------------------
+    
+    
+    # Snimi najbolji model i vrijeme snimanja
+    if (file.exists(last_model_file)) {
+      file.remove(last_model_file)  # Obriši postojeći file
+    }
+    
+    
+    
+    # Snimi najbolji model, vrijeme snimanja, i metrike
+    saveRDS(list(
+      best_model = best_model,
+      performance_table = perf_df,
+      importance_percent = importance_percent,
+      importance = importance,
+      best_hyperparameters = best_hyperparameters,
+      rsquared = rsquared,
+      mae = mae,
+      percentage_error = percentage_error,
+      total_contributions_df = total_contributions_df
+    ), last_model_file)
+    
+    
+    # Return the best model, performance table, importances, and metrics
+    return(list(
+      best_model = best_model, 
+      performance_table = perf_df, 
+      importance_percent = importance_percent, 
+      importance = importance,
+      best_hyperparameters = best_hyperparameters,
+      rsquared = rsquared,
+      mae = mae,
+      percentage_error = percentage_error,
+      total_contributions_df = total_contributions_df
+    ))
+  }
+}
+
+
+
+
+# prepare data for predictions
+# prepare_data_prediction <- function(data) {
+#   
+#   # from char to factor
+#   data <- as.data.frame(data)
+#   char_vars <- sapply(data, is.character)
+#   data[char_vars] <- lapply(data[char_vars], as.factor)
+#   
+#   # get column index for Product
+#   index_attribute <- which(names(data) == "Product")
+#   
+#   # select data from Product column to the end of the column
+#   data <- data[, index_attribute : ncol(data)]
+#   
+#   return(data = data)
+#   
+# }
+
+
+
+prepare_data_prediction <- function(data) {
+  
+  # from char to factor
+  data <- as.data.frame(data)
+  char_vars <- sapply(data, is.character)
+  data[char_vars] <- lapply(data[char_vars], as.factor)
+  
+  # get column index for Product
+  index_attribute <- which(names(data) == "Product")
+  
+  # select data from Product column to the end of the column
+  prediction_data <- data[, index_attribute : ncol(data)]
+  
+  identification_data <- data[, 1: index_attribute - 1] # select until product column (without product)
+  
+  
+  return(list(prediction_data = prediction_data,
+              identification_data = identification_data))
+  
+}
+
+
+
+
+# generate prediction
+generate_predictions <- function(prepared_data, identification_data, model) {
+  # Inicijaliziraj praznu listu_predikcija
+  prediction_list <- list()
+  
+  last_predictions_file <- "./ml_predictions/last_predictions.rds"
+  
+  # Provjeri ima li snimljenih predikcija i koliko je prošlo od zadnjeg generiranja
+  last_predictions_time <- Sys.time() - as.difftime(2, units = "mins")  # 24 sata
+  
+  if (file.exists(last_predictions_file)) {
+    last_predictions_time <- file.info(last_predictions_file)$mtime
+  }
+  
+  # Ako je prošlo manje od 24 sata, koristi snimljene predikcije
+  if (Sys.time() - last_predictions_time < as.difftime(2, units = "mins")) {
+    
+    cat("Using the last predictions!")
+    
+    loaded_data <- readRDS(last_predictions_file)
+    prediction_list <- c(prediction_list, loaded_data)
+    
+  } else {
+    
+    cat("Generated new predictions!")
+    
+    last_column <- prepared_data[, ncol(prepared_data)]
+    prepared_data <- prepared_data[, -ncol(prepared_data), drop = FALSE]
+
+    # Dodaj nove predikcije u dataset zajedno s datumima
+    prepared_data$predictions <- predict(model$best_model, newdata = data.matrix(prepared_data))
+    prepared_data$quantity <- last_column
+    
+    prepared_data$quantity <- as.numeric(prepared_data$quantity)
+    prepared_data$predictions <- as.numeric(prepared_data$predictions)
+    
+    
+    prepared_data$residual <- prepared_data$quantity - prepared_data$predictions
+    
+    #prepared_data$efficiency_index <- prepared_data$residual * 100 + 100
+    prepared_data$efficiency_percentage <- round((prepared_data$residual / prepared_data$quantity) * 100, 1)  
+    
+    
+    # # calculate quantity_mean
+    mean_quantity <- mean(prepared_data$quantity, rm.na = TRUE)
+    
+    prepared_data <- prepared_data %>% 
+      mutate(efficiency_based_on_average = round((quantity - mean_quantity) / quantity * 100), 1) 
+    
+    
+    
+    
+    prepared_data$date <- as.Date(Sys.time())
+    
+    
+    prepared_data <- bind_cols(identification_data, prepared_data)
+    
+    #saveRDS(prepared_data, "predikcije_data_PROVJERA.rds")
+    
+    
+    
+    # Provjeri postoji li datoteka i stvori je ako ne postoji
+    if (!file.exists(last_predictions_file)) {
+      saveRDS(list(), file = last_predictions_file)
+    }
+    
+    # Učitaj postojeću listu
+    existing_list <- readRDS(last_predictions_file)
+    
+    # Dodaj novi dataset u postojeću listu
+    updated_list <- c(existing_list, list(prepared_data))
+    
+    # Snimi ažuriranu listu s predikcijama
+    saveRDS(updated_list, file = last_predictions_file)
+    
+    # Postavi predikcije na ažuriranu listu
+    prediction_list <- updated_list
+  }
+  
+  return(prediction_list)
+}
+
+
+
+map_data_types_from_UI <- function(source_df, target_df) {
+  for (col_name in colnames(source_df)) {
+    if (is.factor(source_df[[col_name]])) {
+      target_df[[col_name]] <- factor(target_df[[col_name]], levels = levels(source_df[[col_name]]))
+    } else {
+      target_df[[col_name]] <- as(target_df[[col_name]], class(source_df[[col_name]]))
+    }
+  }
+  return(target_df)
+}
+
+
+
+
+generate_predictions_prescript <- function(best_model, data_prescript) {
+  
+    predicted_values <- predict(best_model, newdata = data.matrix(data_prescript))
+    
+    model_type <- "Regression"
+    
+    predictions_df <- list(
+      pred_data = data.frame(
+        Predicted = predicted_values
+      )
+    )
+    
+    return(list(predictions_df = predictions_df, 
+                model_type = model_type))
+  
+}
+
+
+
+

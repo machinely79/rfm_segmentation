@@ -1,0 +1,576 @@
+
+
+ui <- fluidPage(
+  #useShinyjs(),   # zakometarisano, ne prikazuje preview table
+  tags$head(
+    tags$link(rel = "stylesheet", type = "text/css", href = "style.css"),
+    tags$script(
+      '
+      $(document).ready(function() {
+        // Hide the absolutePanel initially
+        $("#controls").hide();
+
+        // Toggle the visibility of the absolutePanel when button is clicked
+        $("#toggle_button_metrices").click(function() {
+          $("#controls").toggle();
+        });
+      });
+      '
+    ),
+    tags$script(
+      '
+    $(document).ready(function() {
+      // Hide the absolutePanel initially
+      $("#controls2").hide();
+
+      // Toggle the visibility of the absolutePanel when button is clicked
+      $("#toggle_button_validation").click(function() {
+        $("#controls2").toggle();
+      });
+    });
+    '
+    ),
+  ),
+  
+  navbarPage(
+    theme = bslib::bs_theme(bootswatch = "superhero"), "machinely",  
+    
+    tabPanel(
+      div(img(src='getting_started.svg', height='20', width='20'),"Getting Started"), 
+      
+      fluidRow(
+        column(width = 6,
+               div(
+                 style = "display: flex; justify-content: center; align-items: flex-start; height: 70vh;",
+                 #  GIF element
+                 tags$img(src = "gif_first_page.gif", width = 700, height ="auto" )
+                 
+               )
+               
+        ),
+        column(width = 6,  # Desna kolona sa svim ekranima
+               h3("Getting Started"),
+               glide(
+                 height = "500px",
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "Untitled1_AdobeExpress(1).gif", style = "width: 600px; height: auto; "),
+                     HTML("<br>"),
+                     h2("Screen 1: Welcome"),
+                     p("Welcome to the Shinyglide example app. This app demonstrates how to create a multi-screen presentation using the shinyglide package.")
+                   )
+                 ),
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "none.svg", style = "width: 300px; height: auto; opacity: 0.7;"),
+                     HTML("<br>"),
+                     h2("Screen 2: Features"),
+                     p("Shinyglide allows you to create interactive and dynamic presentations in Shiny apps. It's great for showcasing information in an engaging way.")
+                   )
+                 ),
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "none.svg", style = "width: 300px; height: auto; opacity: 0.7;"),
+                     HTML("<br>"),
+                     h2("Screen 3: How to Use"),
+                     p("Using shinyglide is simple. Just define your screens, add content, and create an interactive glide presentation that users can navigate through.")
+                   )
+                 ),
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "slika4.jpg", style = "width: 300px; height: auto; opacity: 0.7;"),
+                     HTML("<br>"),
+                     h2("Screen 4: Customization"),
+                     p("You can customize each screen with HTML and CSS to create visually appealing and interactive presentations.")
+                   )
+                 ),
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "slika5.jpg", style = "width: 300px; height: auto; opacity: 0.7;"),
+                     HTML("<br>"),
+                     h2("Screen 5: More Screens"),
+                     p("You can add as many screens as you need to convey your message effectively. Each screen can have different content and visuals.")
+                   )
+                 ),
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "slika6.jpg", style = "width: 300px; height: auto; opacity: 0.7;"),
+                     HTML("<br>"),
+                     h2("Screen 6: Try It Out"),
+                     p("Feel free to explore this interactive presentation. You can navigate through screens using the Next and Previous buttons.")
+                   )
+                 ),
+                 screen(
+                   div(
+                     style = "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;",
+                     tags$img(src = "slika7.jpg", style = "width: 300px; height: auto; opacity: 0.7;"),
+                     HTML("<br>"),
+                     h2("Screen 7: Conclusion"),
+                     p("Thank you for trying out the shinyglide example app. We hope you find it useful for creating engaging presentations in your Shiny apps!")
+                   )
+                 )
+                 
+                 
+                 
+               )
+        )
+      )
+      
+    ),
+    
+    
+
+    navbarMenu("Data",
+               
+               tabPanel(
+                 div(img(src='trening_data.svg', height='20', width='20'),"Training Data"), 
+                 sidebarLayout(
+                   sidebarPanel(
+                     #HTML('<p style="color: #7bc0ce;">MODEL TRAINING DATA</p>'),
+                     p("MODEL TRAINING DATA"),
+                     #style = "width: 25%; height: 90%; min-height: 90vh; position: fixed; padding-right: 15px;",
+                     style = "width: 25%; height: 90%; min-height: 90vh; position: fixed; padding-right: 15px; ", # overflow-y: scroll;
+                     tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                     fileInput("file", "Choose File"),
+                     
+                     
+                     shinyjs::hidden(
+                       div(p("Data Preview"), style = 'overflow-x: scroll; margin-top: 0; font-size: 14px;',
+                           #tableOutput('preview')
+                           div(class = "preview-table",tableOutput('preview'))
+                       )
+                     ),
+                     
+                     br(),
+                     uiOutput("delimiter_selection"),
+                     br(),
+                     fluidRow(
+                       # Prva kolona
+                       column(
+                         width = 6,
+                         shinyjs::hidden(actionButton("import", "Import"))
+                       ),
+                       
+                       # Druga kolona
+                       column(
+                         width = 6,
+                         actionButton("delete", "Delete")
+                       )
+                     ),
+                     
+                     
+                     #shinyjs::hidden(actionButton("import", "Insert")),
+                     br(),
+                     br(),
+                     numericInput("minNumberRow", label = "Display Number of Rows:", value = 15),
+                     br(),
+                     
+                     div(p("Select Columns:", style = "margin-top: 0; font-size: 14px;"),
+                         style = "max-height: 200px; min-height: 200px; overflow-y: auto;",
+                         uiOutput("columns_select_ui")
+                     )
+                     
+                   ),
+                   mainPanel(
+                     style = "margin-left: 25%; width: 75%; padding-left: 40px;",
+                     tabsetPanel(
+                       tabPanel(
+                         div(HTML(paste('<img src="table.svg" height="20" width="20" style="vertical-align: middle; margin-right: 4px;" />',
+                                        '<span style="vertical-align: middle;">&nbsp;</span>',
+                                        "View Training Data"))
+                         ),
+                         
+                         br(),
+                         withSpinner(uiOutput("table_1"), type = 2)
+                         
+                         #reactableOutput("table_1")#THIS
+                         
+                       ),
+                       tabPanel(
+                         div(HTML(paste('<img src="column_summary.svg" height="25" width="25" style="vertical-align: middle; margin-right: 4px;" />',
+                                        '<span style="vertical-align: middle;">&nbsp;</span>',
+                                        "Summary Statistics"))
+                         ),
+                         
+                         br(),
+                         # ZAKOMENTARISANO, PRAVI PROBLEM KOG GETTING STARTED SCREEN PRESENTATION
+                         # conditionalPanel(
+                         #   condition = "!is.null(data()) && ncol(data()) > 0",
+                         #   div(
+                         #     style = "border: 2px solid #387a87; padding: 10px; background-color: rgba(123,192,206, 0.7);",
+                         #     HTML(paste(
+                         #       "<img src='information.svg' width='24' height='24' style='vertical-align: middle; margin-right: 8px;' />",
+                         #       "<span style='color: #09353e;'>",
+                         #       textOutput("summary_text_output"),
+                         #       "</span>"
+                         #     ))
+                         #   )
+                         #
+                         # ),
+                         
+                         div(
+                           id = "summary_div",
+                           style = "border: 2px solid #387a87; padding: 10px; background-color: rgba(123,192,206, 0.7); display: flex; align-items: center;",
+                           tags$img(src = "information.svg", width = "30px", height = "30px", style = "margin-right: 10px;"),
+                           textOutput("summary_text_output")
+                         ),
+                         
+                         
+                         
+                         br(),
+                         br(),
+                         withSpinner(uiOutput("table_2"), type = 2),
+                         
+                         
+                         uiOutput("conditional_elements_help_text"),
+                         
+                         
+                       ),
+                       tabPanel(
+                         div(HTML(paste('<img src="nominal.svg" height="25" width="25" style="vertical-align: middle; margin-right: 4px;" />',
+                                        '<span style="vertical-align: middle;">&nbsp;</span>',
+                                        "Categorical Data"))
+                         ),
+                         br(),
+                         br(),
+                         withSpinner(uiOutput("table_3"), type = 2),
+                         
+                         
+                       )
+                     )
+                   )
+                 )
+                 
+                 
+                 
+               ),
+               
+               tabPanel(
+                 div(img(src='prediction.svg', height='20', width='20'),"Prediction Data"), 
+                 sidebarLayout(
+                   sidebarPanel(
+                     #HTML('<p style="color: #7bc0ce;">PREDICTION DATA</p>'),
+                     p("PREDICTION DATA"),
+                     #style = "width: 25%; height: 90%; min-height: 90vh; position: fixed; padding-right: 15px;",
+                     style = "width: 25%; height: 90%; min-height: 90vh; position: fixed; padding-right: 15px;", #overflow-y: scroll;
+                     tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                     fileInput("file_pred", "Choose File"),
+                     
+                     
+                     shinyjs::hidden(
+                       div(p("Data Preview"), style = 'overflow-x: scroll; margin-top: 0; font-size: 14px;',
+                           #tableOutput('preview_pred')
+                           div(class = "preview-table-pred", tableOutput('preview_pred'))
+                           
+                       )
+                     ),
+                     
+                     br(),
+                     uiOutput("delimiter_selection_pred"),
+                     br(),
+                     shinyjs::hidden(actionButton("import_pred", "Import")),
+                     br(),
+                     br(),
+                     numericInput("minNumberRow_pred", label = "Display Number of Rows:", value = 15),
+                     br(),
+                     
+                     div(p("Select Columns:", style = "margin-top: 0; font-size: 14px;"),
+                         style = "max-height: 200px; min-height: 200px; overflow-y: auto;",
+                         uiOutput("columns_select_ui_pred")
+                     )
+                     
+                   ),
+                   mainPanel(
+                     style = "margin-left: 25%; width: 75%; padding-left: 40px;",
+                     tabsetPanel(
+                       tabPanel(
+                         div(HTML(paste('<img src="table.svg" height="20" width="20" style="vertical-align: middle; margin-right: 4px;" />',
+                                        '<span style="vertical-align: middle;">&nbsp;</span>',
+                                        "View Prediction Data"))
+                         ),
+                         
+                         br(),
+                         withSpinner(uiOutput("table_1_pred"), type = 2)
+                         
+                         #reactableOutput("table_1")#THIS
+                         
+                       ),
+                       tabPanel(
+                         div(HTML(paste('<img src="column_summary.svg" height="25" width="25" style="vertical-align: middle; margin-right: 4px;" />',
+                                        '<span style="vertical-align: middle;">&nbsp;</span>',
+                                        "Summary Statistics"))
+                         ),
+                         
+                         br(),
+                         # ZAKOMENTARISANO, PRAVI PROBLEM KOG GETTING STARTED SCREEN PRESENTATION
+                         # conditionalPanel(
+                         #   condition = "!is.null(data()) && ncol(data()) > 0",
+                         #   div(
+                         #     style = "border: 2px solid #387a87; padding: 10px; background-color: rgba(123,192,206, 0.7);",
+                         #     HTML(paste(
+                         #       "<img src='information.svg' width='24' height='24' style='vertical-align: middle; margin-right: 8px;' />",
+                         #       "<span style='color: #09353e;'>",
+                         #       textOutput("summary_text_output"),
+                         #       "</span>"
+                         #     ))
+                         #   )
+                         #
+                         # ),
+                         
+                         div(
+                           id = "summary_div_pred",
+                           style = "border: 2px solid #387a87; padding: 10px; background-color: rgba(123,192,206, 0.7); display: flex; align-items: center;",
+                           tags$img(src = "information.svg", width = "30px", height = "30px", style = "margin-right: 10px;"),
+                           textOutput("summary_text_output_pred")
+                         ),
+                         
+                         
+                         br(),
+                         br(),
+                         withSpinner(uiOutput("table_2_pred"), type = 2),
+                         
+                         
+                         uiOutput("conditional_elements_help_text_pred"),
+                         
+                         
+                       ),
+                       tabPanel(
+                         div(HTML(paste('<img src="nominal.svg" height="25" width="25" style="vertical-align: middle; margin-right: 4px;" />',
+                                        '<span style="vertical-align: middle;">&nbsp;</span>',
+                                        "Categorical Data"))
+                         ),
+                         br(),
+                         br(),
+                         withSpinner(uiOutput("table_3_pred"), type = 2),
+                         
+                         
+                       )
+                     )
+                   )
+                 )
+                 
+                 
+                 
+               )
+               
+    ),
+    
+    
+    navbarMenu("Models",
+               
+               tabPanel("Supervised",
+                        navlistPanel("",
+                                     tabPanel(div(img(src='training.svg', height='30', width='30'),"Training"),
+                                              #h5("Tuning", style = "margin-top: 5px;"),
+                                              h5(div(img(src='tuning.svg', height='20', width='20'), "Tuning"), style = "margin-top: 5px;"), 
+                                              fluidRow(
+                                                column(3,style = "border-left: 1px solid #16525e; border-top: 1px solid #16525e; border-bottom: 1px solid #16525e; border-radius: 5px;",
+                                                       
+                                                       selectInput("dependent_var", "Target Feature", NULL),
+                                                       br(),
+                                                       chooseSliderSkin("Flat", color = "#0a5f70"),
+                                                       sliderInput("cp_threshold", "CP Threshold:", min = 0, max = 0.5, step = 0.0005, value = 0.001), 
+                                                       
+                                                       
+                                                ),
+                                                
+                                                column(3, style = "border-top: 1px solid #16525e; border-bottom: 1px solid #16525e; border-radius: 5px;",
+                                                       sliderInput("max_depth", "Max Depth:", min= 1, max= 30, step =1, value =15),
+                                                       sliderInput("minsplit", "Min Split:", min=5, max= 80, step =5, value =  20)
+                                                       
+                                                ),
+                                                
+                                                column(3,style = "border-top: 1px solid #16525e; border-bottom: 1px solid #16525e; border-radius: 5px;",
+                                                       p(style = "font-size: 14px;","Show Metrics"),
+                                                       materialSwitch(
+                                                         inputId = "toggle_button_metrices",
+                                                         #label = "Metrics Panel",
+                                                         value = TRUE,
+                                                         status = "primary"
+                                                       ),
+                                                       p(style = "font-size: 14px;", "Show Cross Validation"),
+                                                       materialSwitch(
+                                                         inputId = "toggle_button_validation",
+                                                         #label = "Metrics Panel",
+                                                         value = TRUE,
+                                                         status = "primary"
+                                                       )
+                                                       
+                                                       
+                                                ),
+                                                column(3, style = "border-left: 1px solid #16525e; border-right: 1px solid #16525e; border-top: 1px solid #16525e; border-bottom: 1px solid #16525e; border-radius: 5px;",
+                                                       
+                                                       #div(img(src='information.svg', height='20', width='20'), helpText("excluded_feature_info"))
+                                                       #textOutput("excluded_feature_info")
+                                                       
+                                                       div(
+                                                         #id = "summary_rules_div",
+                                                         style = "padding: 10px;  display: flex; align-items: top; color: gray; font-size: 12px;",
+                                                         tags$img(src = "information.svg", width = "10px", height = "15px",style = "margin-right: 15px;"),
+                                                         textOutput("excluded_feature_info")
+                                                         
+                                                       ),
+                                                       
+                                                       
+                                                ) 
+                                              ),
+                                              br(),
+                                              fluidRow(
+                                                #tags$hr(style = "border-color: #009999; margin-top: 3px;"),
+                                                mainPanel(id = "myMainPanel",
+                                                          width=12,
+                                                          visNetworkOutput("tree_plot", height = "800px", width = "100%"),
+                                                          
+                                                          
+                                                          tags$style(HTML('
+                                                                        #graphtree_plot > div:nth-child(2)  {
+                                                                        background-color: rgb(32, 110, 123) !important;
+                                                                        border-radius: 15px !important;
+                                                                        color: #cbd5d6 !important;
+                                                                        font-family: sans-serif !important;
+                                                                        font-size: 12px !important;
+                                                                        line-height: 1.42857143 !important;
+                                                                        padding: 5px !important;
+                                                                        white-space: nowrap !important;
+                                                                        }
+                                                                      '))
+                                                          
+                                                )
+                                                
+                                                
+                                              ),
+                                              # absolutePanel(id = "controls", class = "panel panel-default", fixed = TRUE,
+                                              #               draggable = TRUE, top = 60, left = "auto", right = 20, bottom = "auto",
+                                              #               width = 300, height = "auto",
+                                              #               h4("Model Accuracy"),
+                                              #               div(class = "accuracy-div",
+                                              #                   #h5("Accuracy on Training Data:"),
+                                              #                   p(class = "accuracy-value", textOutput("train_accuracy_output")),
+                                              #               
+                                              #               ),
+                                              #               gaugeOutput("gauge_train"),
+                                              #               
+                                              #               div(class = "accuracy-div",
+                                              #                   #h5("Accuracy on Test Data:"),
+                                              #                   p(class = "accuracy-value", textOutput("test_accuracy_output"))
+                                              #               ),
+                                              #               gaugeOutput("gauge_test")
+                                              # )
+                                              uiOutput("dynamic_content"),
+                                              uiOutput("dynamic_content_2")
+                                              
+                                              
+                                     ),
+                                     
+                                     tabPanel(div(img(src='predict_model.svg', height='30', width='30'),"Prediction"),
+                                              
+                                              fluidRow(
+                                                uiOutput("dynamic_ui_rules")
+                                                
+                                                
+                                              ),
+                                              br(),
+                                              fluidRow(
+                                                uiOutput("dynamic_ui_predictions")
+                                              ),
+                                              
+                                              
+                                              
+                                     ),
+                                     tabPanel(div(img(src='scenarios.svg', height='30', width='30'), "Predictive Scenarios"), 
+                                              fluidRow(
+                                                column(width = 4, align = "center",
+                                                       h6("Feature Scenarios"),
+                                                       tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                                       
+                                                       br(),
+                                                       br(),
+                                                       
+                                                       tableOutput("selected_values_table"),
+                                                       # div(p("Data preview"), style = 'overflow-x: scroll; margin-top: 0; font-size: 14px;',
+                                                       #     tableOutput('selected_values_table')
+                                                       # )
+                                                ),
+                                                column(width = 4, align = "center",
+                                                       #style = "border-top: 1px solid #16525e; border-right: 1px solid #16525e; border-bottom: 1px solid #16525e;",
+                                                       style = "padding-right: 22px;", 
+                                                       h6("Predicted Scenario Result"),
+                                                       tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                                       br(),
+                                                       br(),
+                                                       
+                                                       uiOutput("expected_results"),
+                                                       
+                                                       uiOutput("prescriptiv_plot_UI")
+                                                       # br(),
+                                                       # tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                                       # p("Class Probability"), style = 'margin-top: 0; font-size: 14px; color: #a4b3b6;',
+                                                       # plotlyOutput("category_probability")
+                                                       
+                                                ),
+                                                
+                                                column(width = 4, align = "center",    # in server code there are two another columns generated
+                                                       h6("Feature Experimentation"),
+                                                       tags$hr(style="border-color: #009999; margin-top: 3px;"),
+                                                       br(),
+                                                       uiOutput("input_generators")
+                                                )
+                                              ) ,
+                                              
+                                              
+                                     ),
+                        )
+               ),
+               # tabPanel("Unsupervised",
+               #          navlistPanel("Steps",
+               #                       tabPanel("Trening",
+               #                                h5("Tuning", style = "margin-top: 5px;"),
+               #                                tags$hr(style = "border-color: #009999; margin-top: 3px;"),
+               #                                fluidRow(
+               #                                  column(4,
+               #                                         sliderInput("slider1", "Slider 1:", 1, 100, 50),
+               #                                         sliderInput("slider2", "Slider 2:", 1, 100, 25)
+               #                                  ),
+               #                                  column(4,
+               #                                         sliderInput("slider3", "Slider 3:", 1, 100, 75),
+               #                                         sliderInput("slider4", "Slider 4:", 1, 100, 10)
+               #                                  ),
+               #                                  column(4,
+               #                                         sliderInput("slider3", "Slider 3:", 1, 100, 75),
+               #                                         sliderInput("slider4", "Slider 4:", 1, 100, 10)
+               #                                  ),
+               #                                  tags$hr(style = "border-color: #009999; margin-top: 3px;"),
+               #                                  h5("TEST")
+               #                                ),
+               #                       ),
+               #                       tabPanel("Prediction",
+               #                                #h3("Dobrodošli na drugi tabPanel u drugoj Navbar Page!")
+               #                       ),
+               #                       tabPanel("Prescription",
+               # 
+               # 
+               # 
+               # 
+               # 
+               # 
+               #                       ),
+               #          )
+               # )
+    ),
+    
+    
+    
+    
+  )
+)
+
+
+
+
+
