@@ -18,14 +18,19 @@ RFM Segmentation is a user-friendly web app that allows users to easily perform 
 
 
 
+
      ![RFMScoring](https://github.com/machinely79/rfm_segmentation/blob/main/images/customer_scoring.png)
+
+
 
 3. **Interactive Tables and Data Download:**
    - Enables users to download tables with RFM scores for further exploration and data manipulation.
 
 
 
+
  ![GetScores](https://github.com/machinely79/rfm_segmentation/blob/main/images/get_data_scores.png)
+
 
 
 5. **Customer and Location-based Analysis:**
