@@ -2,6 +2,8 @@
 
 RFM Segmentation is a user-friendly web app that allows users to easily perform RFM (Recency, Frequency, Monetary) analysis for customers and locations through an intuitive interface. The app uses interactive charts and tables to help users identify patterns and gain insights into customer and location behavior based on three key parameters: recency (time since the last purchase), frequency (how often purchases occur), and monetary (amount spent).
 
+![SCMap](https://github.com/machinely79/product-supply-forecast/blob/main/images/SCMap.png)
+
 ## Key Features
 
 1. **RFM Result Visualization:**
