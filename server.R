@@ -1,11 +1,11 @@
 
 server <- function(input, output, session) { 
-  source("D:/MyData/Application_B2B_sales/scripts/rfm_analysis.R") 
+  source("D:/MyData/Data Science Mladen/MyGitHubProjects/rfm_segmentation/scripts/rfm_analysis.R") 
   
   
   # Loads customer data from a CSV file and makes it reactive
   data_customer <- reactive({
-    df <- read.csv("D:/MyData/Application_B2B_sales/data/customers.csv", sep = ";")
+    df <- read.csv("D:/MyData/Data Science Mladen/MyGitHubProjects/rfm_segmentation/data/customers.csv", sep = ",")
   })
   
   
