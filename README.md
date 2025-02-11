@@ -15,17 +15,22 @@ RFM Segmentation is a user-friendly web app that allows users to easily perform 
 
 3. **Scatter Plots:**
    - Generates scatter plots displaying the relationship between spending amount and the number of days since the last purchase.
-  
+
+
+
      ![RFMScoring](https://github.com/machinely79/rfm_segmentation/blob/main/images/customer_scoring.png)
 
-4. **Interactive Tables and Data Download:**
+3. **Interactive Tables and Data Download:**
    - Enables users to download tables with RFM scores for further exploration and data manipulation.
+
+
 
  ![GetScores](https://github.com/machinely79/rfm_segmentation/blob/main/images/get_data_scores.png)
 
 
 5. **Customer and Location-based Analysis:**
    - Analyzes data based on customers and their locations, providing deeper insights into customer behavior patterns in specific areas.
+
 
 The application is useful for business data analysis, marketing strategy optimization, customer segmentation, and improving targeted marketing campaigns.
 
