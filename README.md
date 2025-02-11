@@ -7,13 +7,15 @@ RFM Segmentation is a user-friendly web app that allows users to easily perform 
 
 ## Key Features
 
-1. **RFM Result Visualization:**
+1. ### Interactive Visualization
+   
+**RFM Cross-distribution:**
    - Displays bar charts showing the cross-distribution of RFM scores for customers and their locations, helping to identify different customer segments based on their activity.
 
-2. **Heatmap:**
+**Heatmap:**
    - Uses heatmaps to visualize average **monetary** values (spending amounts) across different combinations of **recency** and **frequency** scores, making the data easily interpretable for behavior analysis.
 
-3. **Scatter Plots:**
+**Scatter Plots:**
    - Generates scatter plots displaying the relationship between spending amount and the number of days since the last purchase.
 
 
@@ -23,7 +25,7 @@ RFM Segmentation is a user-friendly web app that allows users to easily perform 
 
 
 
-3. **Interactive Tables and Data Download:**
+2. ### Interactive Tables and Data Download
    - Enables users to download tables with RFM scores for further exploration and data manipulation.
 
 
@@ -33,7 +35,7 @@ RFM Segmentation is a user-friendly web app that allows users to easily perform 
 
 
 
-5. **Customer and Location-based Analysis:**
+3. ### Customer and Location-based Analysis
    - Analyzes data based on customers and their locations, providing deeper insights into customer behavior patterns in specific areas.
 
 
