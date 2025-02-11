@@ -41,3 +41,8 @@ RFM Segmentation is a user-friendly web app that allows users to easily perform 
 
 The application is useful for business data analysis, marketing strategy optimization, customer segmentation, and improving targeted marketing campaigns.
 
+
+
+## Technologies Used 🛠️
+This application is built using the following technologies and packages:
+
